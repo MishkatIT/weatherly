@@ -16,6 +16,14 @@ export const metadata: Metadata = {
   description:
     "Weatherly is a full-stack weather and environmental intelligence platform powered by the WeatherAI API. Features include auto weather detection, city weather dashboard, and farm canopy tree health analysis.",
   keywords: ["weather", "weatherly", "WeatherAI", "tree count", "agronomy", "canopy health"],
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icon-180.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
