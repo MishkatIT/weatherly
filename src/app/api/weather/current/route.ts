@@ -13,8 +13,7 @@ const currentQuerySchema = z.object({
   lat: z.preprocess((val) => (val === null || val === "" ? undefined : val), z.coerce.number().min(-90).max(90, { message: "Latitude must be between -90 and 90" })),
   lon: z.preprocess((val) => (val === null || val === "" ? undefined : val), z.coerce.number().min(-180).max(180, { message: "Longitude must be between -180 and 180" })),
   units: z.enum(["metric", "imperial"]).optional().default("metric"),
-  days: z.coerce.number().int().min(1).max(14).optional().default(7),
-  ai: z.preprocess((val) => val === "true" || val === true || val === "1", z.boolean()).optional().default(true),
+  days: z.coerce.number().int().min(1).max(7).optional().default(7),
 });
 
 export async function GET(request: NextRequest) {
@@ -25,7 +24,6 @@ export async function GET(request: NextRequest) {
       lon: searchParams.get("lon"),
       units: searchParams.get("units") || undefined,
       days: searchParams.get("days") || undefined,
-      ai: searchParams.get("ai") || undefined,
     });
 
     if (!parsed.success) {
@@ -35,7 +33,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { lat, lon, units, days, ai } = parsed.data;
+    const { lat, lon, units } = parsed.data;
     const ip = getClientIp(request);
     const sessionId = getSessionId(request);
 
@@ -46,17 +44,12 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Fetch from cache or upstream using single-flight
-    const cacheKey = cacheKeys.weather({ lat, lon, units, days, ai });
-    const cacheKeyTrue = cacheKeys.weather({ lat, lon, units, days, ai: true });
-    
+    const cacheKey = cacheKeys.weather({ lat, lon, units, days: 7, ai: false });
+
     let cachedData: any = null;
-    let cachedDataTrue: any = null;
     if (redis) {
       try {
         cachedData = await redis.get(cacheKey);
-        if (!ai) {
-          cachedDataTrue = await redis.get(cacheKeyTrue);
-        }
       } catch (cacheErr) {
         console.error("[Cache Read Error]:", cacheErr);
       }
@@ -68,28 +61,15 @@ export async function GET(request: NextRequest) {
       responseData = safeJsonParse(cachedData);
     } else {
       console.log(`[Cache MISS] Weather for coords: ${lat},${lon}`);
-      // Call service layer with single-flight protection
-      const freshData = await singleFlight(cacheKey, () =>
-        getWeather(lat, lon, units, days, ai)
-      );
+      const freshData = await singleFlight(cacheKey, () => getWeather(lat, lon, units));
       responseData = freshData;
 
-      // Cache successful weather response for 10 minutes (600 seconds)
       if (redis && freshData) {
         try {
           await redis.set(cacheKey, freshData, { ex: 600 });
         } catch (cacheErr) {
           console.error("[Cache Write Error]:", cacheErr);
         }
-      }
-    }
-
-    // Merge cached AI summary if available (its presence means the user generated it)
-    if (!ai && cachedDataTrue && responseData) {
-      const parsedTrue = safeJsonParse(cachedDataTrue);
-      if (parsedTrue && parsedTrue.ai_summary) {
-        responseData.ai_summary = parsedTrue.ai_summary;
-        responseData.is_fallback = false;
       }
     }
 

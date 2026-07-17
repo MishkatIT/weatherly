@@ -23,7 +23,7 @@ export const cacheKeys = {
     // Round lat/lon to 2 decimal places to increase cache hits for search proximity
     const roundedLat = lat.toFixed(2);
     const roundedLon = lon.toFixed(2);
-    return `weather:current:${roundedLat}:${roundedLon}:${units}:${days}:${ai}`;
+    return `weather:current:${roundedLat}:${roundedLon}:${units}:${days}`;
   },
 
   hourly: (lat: number, lon: number, units: string) => {
@@ -36,6 +36,4 @@ export const cacheKeys = {
     const normalized = query.trim().toLowerCase();
     return `geocode:${normalized}`;
   },
-
-  usage: () => "usage:global",
 };

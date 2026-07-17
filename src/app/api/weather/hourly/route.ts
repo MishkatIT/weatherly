@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     // 2. Fetch from cache or upstream using single-flight
     const cacheKey = cacheKeys.hourly(lat, lon, units);
-    
+
     let cachedData: any = null;
     if (redis) {
       try {
@@ -60,10 +60,8 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Cache MISS] Hourly Weather for coords: ${lat},${lon}`);
 
-    // Call service layer with single-flight protection
     const freshData = await singleFlight(cacheKey, () => getHourly(lat, lon, units));
 
-    // Cache successful hourly weather response for 10 minutes (600 seconds)
     if (redis && freshData) {
       try {
         await redis.set(cacheKey, freshData, { ex: 600 });

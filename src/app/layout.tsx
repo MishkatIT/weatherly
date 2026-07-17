@@ -3,7 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
 import Navbar from "@/components/shared/Navbar";
-import UsageWidget from "@/components/shared/UsageWidget";
+import WeatherChat from "@/components/shared/WeatherChat";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -12,10 +12,10 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Weatherly — Powered by WeatherAI",
+  title: "Weatherly — Powered by OpenWeather",
   description:
-    "Weatherly is a full-stack weather and environmental intelligence platform powered by the WeatherAI API. Features include auto weather detection, city weather dashboard, and farm canopy tree health analysis.",
-  keywords: ["weather", "weatherly", "WeatherAI", "tree count", "agronomy", "canopy health"],
+    "Weatherly is a full-stack weather intelligence platform powered by the OpenWeatherMap API. Features include auto weather detection, city weather dashboard, hourly and 7-day forecasts, air quality index, and more.",
+  keywords: ["weather", "weatherly", "OpenWeatherMap", "forecast", "air quality", "hourly weather"],
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -39,7 +39,7 @@ export default function RootLayout({
           <main className="flex-1 w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
             {children}
           </main>
-          <UsageWidget />
+          <WeatherChat />
         </Providers>
       </body>
     </html>

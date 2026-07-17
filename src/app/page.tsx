@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Search,
   MapPin,
@@ -10,8 +10,6 @@ import {
   Thermometer,
   Droplets,
   Wind,
-  Compass,
-  Sparkles,
   Sun,
   Calendar,
   CloudRain,
@@ -20,6 +18,19 @@ import {
   Cloud,
   ChevronRight,
   TrendingUp,
+  Gauge,
+  Eye,
+  Navigation,
+  Sunrise,
+  Sunset,
+  Leaf,
+  Zap,
+  Umbrella,
+  Triangle,
+  RefreshCw,
+  Compass,
+  Droplet,
+  Sparkles,
 } from "lucide-react";
 import {
   LineChart,
@@ -31,133 +42,185 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { WeatherResponse, HourlyResponse } from "@/lib/weather-ai/types";
+import { WeatherResponse } from "@/lib/weather-ai/types";
 import { GeocodeResult } from "@/app/api/geocode/route";
 import { cn } from "@/lib/utils";
+import WeatherMap from "@/components/shared/WeatherMap";
+import ActivityAdvisor from "@/components/shared/ActivityAdvisor";
 
-function getWeatherGradient(description: string = "") {
-  const desc = description.toLowerCase();
-  if (desc.includes("clear") || desc.includes("sunny")) {
-    return "from-amber-500/20 via-orange-400/10 to-sky-100/30 border-amber-500/20 dark:from-amber-950/30 dark:via-orange-950/15 dark:to-slate-900/50 dark:border-amber-950/40";
-  }
-  if (desc.includes("rain") || desc.includes("drizzle") || desc.includes("shower")) {
-    return "from-blue-500/20 via-indigo-500/10 to-slate-100/40 border-blue-500/20 dark:from-indigo-950/35 dark:via-slate-900/40 dark:to-slate-950/60 dark:border-indigo-950/40";
-  }
-  if (desc.includes("thunder") || desc.includes("storm")) {
-    return "from-purple-500/20 via-violet-600/10 to-slate-100/40 border-purple-500/20 dark:from-purple-950/35 dark:via-slate-900/40 dark:to-slate-950/60 dark:border-purple-950/40";
-  }
-  if (desc.includes("snow") || desc.includes("ice") || desc.includes("freeze")) {
-    return "from-cyan-300/25 via-sky-300/10 to-slate-50/50 border-cyan-400/20 dark:from-cyan-950/30 dark:via-slate-900/40 dark:to-slate-950/60 dark:border-cyan-950/40";
-  }
-  return "from-slate-300/30 via-zinc-400/10 to-transparent border-slate-300/40 dark:from-slate-800/40 dark:via-zinc-900/20 dark:to-slate-950/60 dark:border-slate-800/60";
+// ─── Weather gradient ────────────────────────────────────────────────────────
+function getWeatherGradient(description = "") {
+  const d = description.toLowerCase();
+  if (d.includes("clear") || d.includes("sunny"))
+    return "from-amber-500/20 via-orange-400/10 to-sky-100/30 border-amber-500/20 dark:from-amber-950/30 dark:via-orange-950/15 dark:border-amber-950/40";
+  if (d.includes("rain") || d.includes("drizzle") || d.includes("shower"))
+    return "from-blue-500/20 via-indigo-500/10 border-blue-500/20 dark:from-indigo-950/35 dark:via-slate-900/40 dark:border-indigo-950/40";
+  if (d.includes("thunder") || d.includes("storm"))
+    return "from-purple-500/20 via-violet-600/10 border-purple-500/20 dark:from-purple-950/35 dark:border-purple-950/40";
+  if (d.includes("snow") || d.includes("ice"))
+    return "from-cyan-300/25 via-sky-300/10 border-cyan-400/20 dark:from-cyan-950/30 dark:border-cyan-950/40";
+  return "from-slate-300/20 via-zinc-400/10 border-slate-300/40 dark:from-slate-800/40 dark:border-slate-800/60";
 }
 
-function getWeatherIcon(iconName: string = "", className: string = "h-6 w-6") {
+// ─── Weather icon ────────────────────────────────────────────────────────────
+function getWeatherIcon(iconName = "", className = "h-6 w-6") {
   const icon = iconName.toLowerCase();
-  if (icon.includes("sun") || icon.includes("clear")) {
-    return <Sun className={cn("text-amber-400 dark:text-amber-400", className)} />;
-  }
-  if (icon.includes("rain") || icon.includes("drizzle")) {
+  if (icon === "sun")
+    return <Sun className={cn("text-amber-400", className)} />;
+  if (icon === "rain")
     return <CloudRain className={cn("text-blue-500 dark:text-blue-400", className)} />;
-  }
-  if (icon.includes("thunder") || icon.includes("lightning")) {
+  if (icon === "thunder")
     return <CloudLightning className={cn("text-purple-500 dark:text-purple-400", className)} />;
-  }
-  if (icon.includes("snow")) {
+  if (icon === "snow")
     return <CloudSnow className={cn("text-sky-400 dark:text-sky-300", className)} />;
-  }
-  return <Cloud className={cn("text-slate-400 dark:text-slate-400", className)} />;
+  return <Cloud className={cn("text-slate-400", className)} />;
 }
 
+// ─── AQI helpers ─────────────────────────────────────────────────────────────
+function aqiColor(aqi: number) {
+  const map: Record<number, string> = {
+    1: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/50",
+    2: "text-lime-600 dark:text-lime-400 bg-lime-50 dark:bg-lime-950/40 border-lime-200 dark:border-lime-800/50",
+    3: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/50",
+    4: "text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-800/50",
+    5: "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800/50",
+  };
+  return map[aqi] ?? "text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800/50";
+}
 
+function aqiLabel(aqi: number) {
+  const map: Record<number, string> = { 1: "Good", 2: "Fair", 3: "Moderate", 4: "Poor", 5: "Very Poor" };
+  return map[aqi] ?? "—";
+}
 
+// ─── Wind / Sun helpers ──────────────────────────────────────────────────────
+function windDegToCardinal(deg?: number) {
+  if (deg === undefined) return "—";
+  const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function formatSunTime(unix?: number) {
+  if (!unix) return "—";
+  return new Date(unix * 1000).toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit", hour12: true,
+  });
+}
+
+// ─── UV risk label ───────────────────────────────────────────────────────────
+function uvLabel(uvi?: number): { text: string; color: string } {
+  if (uvi === undefined) return { text: "—", color: "text-slate-500" };
+  if (uvi <= 2) return { text: "Low", color: "text-emerald-500 dark:text-emerald-400" };
+  if (uvi <= 5) return { text: "Moderate", color: "text-amber-500 dark:text-amber-400" };
+  if (uvi <= 7) return { text: "High", color: "text-orange-500 dark:text-orange-400" };
+  if (uvi <= 10) return { text: "Very High", color: "text-red-500 dark:text-red-400" };
+  return { text: "Extreme", color: "text-purple-600 dark:text-purple-400" };
+}
+
+// ─── Metric tile ─────────────────────────────────────────────────────────────
+function MetricTile({
+  icon,
+  label,
+  value,
+  title,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  title?: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 group/metric cursor-help" title={title}>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900/60 shadow-sm border border-slate-200/50 dark:border-0">
+        {icon}
+      </div>
+      <div className="flex flex-col min-w-0">
+        <span className="text-[10px] text-slate-500 dark:text-slate-500 uppercase font-semibold tracking-wide">{label}</span>
+        <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 export default function Home() {
-  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCity, setSelectedCity] = useState<GeocodeResult | null>(null);
   const [units, setUnits] = useState<"metric" | "imperial">("metric");
   const [isDark, setIsDark] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
-  const [aiSummaryWeatherTimestamp, setAiSummaryWeatherTimestamp] = useState<number | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [aiSummary, setAiSummary] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  // Unit conversion helpers (API always fetches in metric: Celsius, km/h, mm)
-  const formatTemp = (tempC: number) => {
-    if (units === "imperial") {
-      return Math.round((tempC * 9) / 5 + 32);
-    }
-    return Math.round(tempC);
-  };
 
-  const formatWindSpeed = (speedKmh: number) => {
-    if (units === "imperial") {
-      return Math.round(speedKmh * 0.621371);
-    }
-    return Math.round(speedKmh);
-  };
+  // ── Unit helpers (API always returns metric; convert client-side) ──────────
+  const fmtTemp = (c: number) =>
+    units === "imperial" ? Math.round((c * 9) / 5 + 32) : Math.round(c);
+  const fmtWind = (kmh: number) =>
+    units === "imperial" ? Math.round(kmh * 0.621371) : Math.round(kmh);
+  const windUnit = units === "metric" ? "km/h" : "mph";
+  const tempUnit = units === "metric" ? "°C" : "°F";
 
-  const formatPrecipitation = (precipMm: number) => {
-    if (units === "imperial") {
-      return Math.round(precipMm * 0.03937 * 100) / 100;
-    }
-    return precipMm;
-  };
-
-  // Load initial unit preference from localStorage on mount (client-side only)
+  // ── Persist unit preference ───────────────────────────────────────────────
   useEffect(() => {
-    const savedUnits = localStorage.getItem("weatherly:units");
-    if (savedUnits === "metric" || savedUnits === "imperial") {
-      setUnits(savedUnits);
-    }
+    const saved = localStorage.getItem("weatherly:units");
+    if (saved === "metric" || saved === "imperial") setUnits(saved);
   }, []);
 
-  const handleToggleUnits = (newUnits: "metric" | "imperial") => {
-    setUnits(newUnits);
-    localStorage.setItem("weatherly:units", newUnits);
+  const handleToggleUnits = (u: "metric" | "imperial") => {
+    setUnits(u);
+    localStorage.setItem("weatherly:units", u);
   };
 
-  // Consolidated current + daily weather query
+  // ── Dark mode observer ────────────────────────────────────────────────────
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains("dark"));
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains("dark"))
+    );
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
+  // ── Close dropdown on outside click ──────────────────────────────────────
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // ── Weather query (One Call 4.0 via /api/weather/current) ────────────────
   const {
     data: weather,
     isLoading: isWeatherLoading,
     isError: isWeatherError,
     error: weatherError,
-    dataUpdatedAt: weatherUpdatedAt,
+    refetch: refetchWeather,
   } = useQuery<WeatherResponse>({
     queryKey: ["weather", selectedCity?.lat, selectedCity?.lon],
     queryFn: async () => {
       if (!selectedCity) return null as any;
       const res = await fetch(
-        `/api/weather/current?lat=${selectedCity.lat}&lon=${selectedCity.lon}&ai=false&units=metric`
+        `/api/weather/current?lat=${selectedCity.lat}&lon=${selectedCity.lon}&units=metric`
       );
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData?.error?.message || "Failed to load weather data");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || "Failed to load weather data");
       }
-      return res.json();
-    },
-    enabled: !!selectedCity,
-    staleTime: 1000 * 60 * 10, // 10 minutes cache
-  });
-
-  // Hourly query (ai=false for quota optimization)
-  const { data: hourly, isLoading: isHourlyLoading } = useQuery<HourlyResponse>({
-    queryKey: ["hourly", selectedCity?.lat, selectedCity?.lon],
-    queryFn: async () => {
-      if (!selectedCity) return null as any;
-      const res = await fetch(
-        `/api/weather/hourly?lat=${selectedCity.lat}&lon=${selectedCity.lon}&units=metric`
-      );
-      if (!res.ok) throw new Error("Failed to load hourly data");
       return res.json();
     },
     enabled: !!selectedCity,
     staleTime: 1000 * 60 * 10,
   });
 
-  // Geocoding query
+  // ── Geocoding query ───────────────────────────────────────────────────────
   const { data: geocodeResults, isLoading: isGeocoding } = useQuery<GeocodeResult[]>({
     queryKey: ["geocode", debouncedSearch],
     queryFn: async () => {
@@ -169,281 +232,190 @@ export default function Home() {
     enabled: debouncedSearch.trim().length > 1,
   });
 
-  // Reset AI summary when location or unit preference updates
-  useEffect(() => {
-    setAiSummary(null);
-    setAiSummaryWeatherTimestamp(null);
-    setAiError(null);
-  }, [selectedCity, units]);
-
-  // Load cached real AI summary automatically if available
-  useEffect(() => {
-    if (weather && weather.ai_summary && weather.is_fallback === false) {
-      setAiSummary(weather.ai_summary);
-      setAiSummaryWeatherTimestamp(weatherUpdatedAt);
-    }
-  }, [weather, weatherUpdatedAt]);
-
-  // Reset AI summary when weather data is updated (re-fetched) and no longer matches
-  useEffect(() => {
-    if (
-      aiSummary &&
-      aiSummaryWeatherTimestamp &&
-      weatherUpdatedAt &&
-      weatherUpdatedAt > aiSummaryWeatherTimestamp
-    ) {
-      if (!weather || !weather.ai_summary || weather.is_fallback !== false) {
-        setAiSummary(null);
-        setAiSummaryWeatherTimestamp(null);
-      }
-    }
-  }, [weather, weatherUpdatedAt, aiSummary, aiSummaryWeatherTimestamp]);
-
-  // Invalidate usage stats when weather query is updated
-  useEffect(() => {
-    if (weatherUpdatedAt) {
-      queryClient.invalidateQueries({ queryKey: ["usage"] });
-    }
-  }, [weatherUpdatedAt, queryClient]);
-
-  const handleFetchAiSummary = async () => {
-    if (!selectedCity) return;
-    setIsAiLoading(true);
-    setAiError(null);
-    try {
-      const res = await fetch(
-        `/api/weather/current?lat=${selectedCity.lat}&lon=${selectedCity.lon}&ai=true&units=metric`
-      );
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData?.error?.message || "Failed to retrieve AI summary");
-      }
-      const data = await res.json();
-      setAiSummary(data.ai_summary);
-      setAiSummaryWeatherTimestamp(weatherUpdatedAt);
-      queryClient.invalidateQueries({ queryKey: ["usage"] });
-    } catch (err: any) {
-      setAiError(err?.message || "Error generating AI summary");
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  // Initialize selectedCity on mount
-  useEffect(() => {
-    // City Location Load
-    const saved = localStorage.getItem("weatherly:last_searched_city");
-    if (saved) {
-      try {
-        setSelectedCity(JSON.parse(saved));
-        return;
-      } catch (err) {
-        console.error("Failed to parse last searched city:", err);
-      }
-    }
-    detectLocation();
-  }, []);
-
-  // Sync state with global HTML class theme toggles (via MutationObserver)
-  useEffect(() => {
-    setIsDark(document.documentElement.classList.contains("dark"));
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
+  // ── Detect location ───────────────────────────────────────────────────────
   const detectLocation = async (usePrecise = false) => {
     setIsDetecting(true);
+    const saveAndSet = (loc: GeocodeResult) => {
+      setSelectedCity(loc);
+      localStorage.setItem("weatherly:last_searched_city", JSON.stringify(loc));
+      setIsDetecting(false);
+    };
 
-    // Helper function to resolve reverse geocode and set city
-    const resolveAndSetLocation = async (lat: number, lon: number): Promise<boolean> => {
+    if (usePrecise && typeof window !== "undefined" && navigator.geolocation) {
       try {
+        const pos = await new Promise<GeolocationPosition>((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
+        );
+        const { latitude: lat, longitude: lon } = pos.coords;
         const geoRes = await fetch(`/api/geocode?lat=${lat}&lon=${lon}`);
         if (geoRes.ok) {
           const results = await geoRes.json();
-          const result = Array.isArray(results) ? results[0] : results;
-          if (result && result.lat !== undefined && result.lon !== undefined) {
-            const loc = {
-              display_name: result.display_name,
-              name: result.name || result.city || "Local Area",
-              lat: Number(result.lat),
-              lon: Number(result.lon),
-              city: result.city || result.name || "Local Area",
-              country: result.country || "Detected Location",
-            };
-            setSelectedCity(loc);
-            localStorage.setItem("weatherly:last_searched_city", JSON.stringify(loc));
-            setIsDetecting(false);
-            return true;
+          const r = Array.isArray(results) ? results[0] : results;
+          if (r?.lat !== undefined) {
+            saveAndSet({ display_name: r.display_name, name: r.name || "Local", lat: +r.lat, lon: +r.lon, city: r.city, country: r.country });
+            return;
           }
         }
-      } catch (err) {
-        console.error("Failed to reverse geocode browser location:", err);
-      }
-      return false;
-    };
-
-    // 1. Try Browser Geolocation API first if requested explicitly
-    if (usePrecise && typeof window !== "undefined" && navigator.geolocation) {
-      try {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-          });
-        });
-        
-        const { latitude, longitude } = position.coords;
-        const success = await resolveAndSetLocation(latitude, longitude);
-        if (success) return;
-      } catch (err) {
-        console.warn("Browser geolocation failed or permission denied, falling back to IP-based location:", err);
-      }
+      } catch { /* fall through */ }
     }
 
-    // 2. Fallback: IP-based detection (if browser geolocation is not requested, unavailable, or denied/fails)
     try {
       const res = await fetch("/api/weather/auto");
       if (res.ok) {
         const data = await res.json();
-        if (data && data.location) {
-          const loc = {
+        if (data?.location) {
+          saveAndSet({
             display_name: `${data.location.city}, ${data.location.country}`,
             name: data.location.city,
             lat: data.location.lat,
             lon: data.location.lon,
             city: data.location.city,
             country: data.location.country,
-          };
-          setSelectedCity(loc);
-          localStorage.setItem("weatherly:last_searched_city", JSON.stringify(loc));
-          setIsDetecting(false);
+          });
           return;
         }
       }
-    } catch (err) {
-      console.error("Failed to auto-detect location via IP:", err);
-    }
-    
-    // 3. Last fallback (if both browser and IP geolocations fail)
-    const fallback = {
-      display_name: "New York City, New York, United States",
-      name: "New York",
-      lat: 40.7128,
-      lon: -74.0060,
-      city: "New York City",
-      state: "New York",
-      country: "United States",
-    };
-    setSelectedCity(fallback);
-    localStorage.setItem("weatherly:last_searched_city", JSON.stringify(fallback));
-    setIsDetecting(false);
+    } catch { /* fall through */ }
+
+    saveAndSet({ display_name: "New York City, United States", name: "New York", lat: 40.7128, lon: -74.006, city: "New York City", country: "United States" });
   };
 
-  // Debounce search term by 600ms
+  // ── Sync active city changes to AI summary and chatbot ──────────────────────
+  const fetchAiSummary = async (lat: number, lon: number, force: boolean = false) => {
+    setIsAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch(`/api/weather/ai/summary?lat=${lat}&lon=${lon}${force ? "&force=true" : ""}`);
+      if (!res.ok) {
+        setAiError("Failed to generate AI weather summary.");
+        setIsAiLoading(false);
+        return;
+      }
+      const data = await res.json();
+      setAiSummary(data.summary);
+    } catch (err) {
+      console.error(err);
+      setAiError("Failed to generate AI weather summary.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-    }, 600);
-    return () => clearTimeout(timer);
+    if (selectedCity?.lat !== undefined) {
+      fetchAiSummary(selectedCity.lat, selectedCity.lon);
+      window.dispatchEvent(new CustomEvent("weatherly:city_changed"));
+    }
+  }, [selectedCity?.lat, selectedCity?.lon]);
+
+  // ── Mount: load saved city or detect ─────────────────────────────────────
+  useEffect(() => {
+    const saved = localStorage.getItem("weatherly:last_searched_city");
+    if (saved) {
+      try { setSelectedCity(JSON.parse(saved)); return; } catch { /* ignore */ }
+    }
+    detectLocation();
+  }, []);
+
+  // ── Debounce search ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 600);
+    return () => clearTimeout(t);
   }, [searchTerm]);
 
-  // Handle city selection
   const handleSelectCity = (city: GeocodeResult) => {
     setSelectedCity(city);
     localStorage.setItem("weatherly:last_searched_city", JSON.stringify(city));
-    setSearchTerm(""); // clear search bar input
-    setDebouncedSearch(""); // clear debounced string to hide suggestions list
+    setSearchTerm("");
+    setDebouncedSearch("");
+    setShowDropdown(false);
   };
 
-  // Map Recharts line data
-  const chartData = weather?.daily?.map((day) => ({
-    name: day.day_of_week,
-    Max: Math.round(day.temp_max),
-    Min: Math.round(day.temp_min),
-  })) || [];
+  // ── Listen to location switch request from AI Chat ─────────────────────────
+  useEffect(() => {
+    const handleSelectCityEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<GeocodeResult>;
+      if (customEvent.detail) {
+        handleSelectCity(customEvent.detail);
+      }
+    };
+    window.addEventListener("weatherly:select_city", handleSelectCityEvent);
+    return () => window.removeEventListener("weatherly:select_city", handleSelectCityEvent);
+  }, []);
 
+  // ── Chart data ────────────────────────────────────────────────────────────
+  const chartData = weather?.daily?.slice(0, 8).map((d) => ({
+    name: d.day_of_week.slice(0, 3),
+    Max: fmtTemp(d.temp_max),
+    Min: fmtTemp(d.temp_min),
+    ...(d.pop !== undefined ? { Rain: d.pop } : {}),
+  })) ?? [];
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8 animate-fade-in text-slate-900 dark:text-slate-55">
-      {/* Header */}
+    <div className="space-y-8 animate-fade-in">
+      {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
             Weather Dashboard
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Detects your geolocation using your network IP or search globally to view telemetry.
+            Powered by OpenWeather One Call API 4.0 — real-time conditions, 48h hourly, 8-day daily & alerts.
           </p>
         </div>
 
-        {/* Theme and Unit Switcher Header Panel */}
+        {/* Unit switcher */}
         <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
-          {/* Unit Switcher */}
           <div className="flex items-center bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-800 p-0.5 rounded-xl shadow-sm">
-            <button
-              onClick={() => handleToggleUnits("metric")}
-              className={cn(
-                "px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200",
-                units === "metric"
-                  ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
-                  : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
-              )}
-            >
-              Celsius (°C)
-            </button>
-            <button
-              onClick={() => handleToggleUnits("imperial")}
-              className={cn(
-                "px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200",
-                units === "imperial"
-                  ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
-                  : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
-              )}
-            >
-              Fahrenheit (°F)
-            </button>
+            {(["metric", "imperial"] as const).map((u) => (
+              <button
+                key={u}
+                onClick={() => handleToggleUnits(u)}
+                className={cn(
+                  "px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200",
+                  units === u
+                    ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
+                    : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
+                )}
+              >
+                {u === "metric" ? "Celsius (°C)" : "Fahrenheit (°F)"}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Search Input Container */}
+      {/* ── Search bar ────────────────────────────────────────────────────── */}
       <div className="flex gap-3 max-w-xl">
-        <div className="relative flex-1">
-          <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 focus-within:border-sky-550/50 focus-within:ring-2 focus-within:ring-sky-500/10 dark:border-slate-800 dark:bg-slate-900/50 dark:focus-within:border-sky-500/50 dark:focus-within:ring-sky-500/20 transition-all shadow-sm">
-            <Search className="h-5 w-5 text-slate-400" />
+        <div className="relative flex-1" ref={searchRef}>
+          <div className="flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 focus-within:border-sky-500/50 focus-within:ring-2 focus-within:ring-sky-500/10 dark:border-slate-800 dark:bg-slate-900/50 dark:focus-within:border-sky-500/50 transition-all shadow-sm">
+            <Search className="h-5 w-5 text-slate-400 shrink-0" />
             <input
               type="text"
-              placeholder="Search city (e.g. London, Dhaka, Tokyo)..."
+              placeholder="Search city — London, Dhaka, Tokyo…"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setShowDropdown(true); }}
+              onFocus={() => setShowDropdown(true)}
               className="w-full bg-transparent border-0 px-3 py-0 text-slate-900 placeholder-slate-400 dark:text-white dark:placeholder-slate-500 focus:outline-none focus:ring-0 sm:text-sm"
             />
-            {isGeocoding && <Loader2 className="h-4 w-4 animate-spin text-slate-450" />}
+            {isGeocoding && <Loader2 className="h-4 w-4 animate-spin text-slate-400 shrink-0" />}
           </div>
 
-          {/* Suggestion Dropdown */}
-          {geocodeResults && geocodeResults.length > 0 && (
-            <div className="absolute top-full left-0 z-50 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-950">
+          {showDropdown && geocodeResults && geocodeResults.length > 0 && (
+            <div className="absolute top-full left-0 z-50 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
               <ul className="space-y-0.5">
                 {geocodeResults.map((result, idx) => (
                   <li key={idx}>
                     <button
                       onClick={() => handleSelectCity(result)}
-                      className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm text-slate-650 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white transition-colors"
+                      className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
                     >
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-800 dark:text-white">{result.name}</span>
-                        <span className="text-xs text-slate-500 mt-0.5 line-clamp-1">
-                          {result.display_name}
-                        </span>
+                        <span className="text-xs text-slate-500 mt-0.5 line-clamp-1">{result.display_name}</span>
                       </div>
-                      <ChevronRight className="h-4 w-4 text-slate-450" />
+                      <ChevronRight className="h-4 w-4 text-slate-400" />
                     </button>
                   </li>
                 ))}
@@ -462,200 +434,273 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Default Prompt when no location selected */}
+      {/* ── Empty state ────────────────────────────────────────────────────── */}
       {!selectedCity && (
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white py-24 px-6 text-center dark:border-slate-850 dark:bg-slate-950/20">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800 mb-4">
-            <MapPin className="h-6 w-6" />
-          </div>
-          <h3 className="text-md font-bold text-slate-900 dark:text-white">No City Selected</h3>
-          <p className="max-w-xs text-sm text-slate-500 mt-1">
-            Detecting local location or search above to view climate telemetry.
-          </p>
+        <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white py-24 px-6 text-center dark:border-slate-800 dark:bg-slate-950/20">
+          <MapPin className="h-10 w-10 text-slate-400 mb-3" />
+          <h3 className="text-md font-bold text-slate-900 dark:text-white">No city selected</h3>
+          <p className="text-sm text-slate-500 mt-1 max-w-xs">Detecting your location — or search above.</p>
         </div>
       )}
 
-      {/* Loading State for Weather details */}
+      {/* ── Loading ─────────────────────────────────────────────────────────── */}
       {isWeatherLoading && (
         <div className="flex flex-col items-center justify-center py-20">
-          <Loader2 className="h-10 w-10 animate-spin text-sky-500 dark:text-sky-400" />
-          <span className="text-xs text-slate-500 mt-3 font-semibold">Retrieving climate data...</span>
+          <Loader2 className="h-10 w-10 animate-spin text-sky-500" />
+          <span className="text-xs text-slate-500 mt-3 font-semibold">Fetching weather data…</span>
         </div>
       )}
 
-      {/* Error state */}
+      {/* ── Error ───────────────────────────────────────────────────────────── */}
       {isWeatherError && (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-red-500/20 bg-red-500/5 py-12 px-6 text-center">
           <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Retrieval Failed</h3>
-          <p className="max-w-md text-sm text-slate-550 dark:text-slate-400 mt-2">
-            {weatherError instanceof Error ? weatherError.message : "Unable to retrieve weather telemetry details."}
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Data Unavailable</h3>
+          <p className="max-w-md text-sm text-slate-500 dark:text-slate-400 mt-2">
+            {weatherError instanceof Error ? weatherError.message : "Unable to retrieve weather data."}
           </p>
+          <button
+            onClick={() => refetchWeather()}
+            className="mt-4 flex items-center gap-2 text-xs font-semibold text-sky-500 hover:text-sky-400 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" /> Retry
+          </button>
         </div>
       )}
 
-      {/* Active Dashboard Grid */}
+      {/* ── Dashboard ───────────────────────────────────────────────────────── */}
       {weather && selectedCity && (
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Main Weather Card */}
+
+          {/* ════ Main weather card (2-col) ═══════════════════════════════════ */}
           <div
             className={cn(
-              "lg:col-span-2 relative overflow-hidden rounded-3xl border p-6 sm:p-8 flex flex-col justify-between shadow-xl backdrop-blur-sm bg-gradient-to-b border-slate-200/80 dark:border-slate-800/40 bg-white/70 dark:bg-slate-900/40",
+              "lg:col-span-2 relative overflow-hidden rounded-3xl border p-6 sm:p-8 flex flex-col bg-gradient-to-b shadow-xl backdrop-blur-sm bg-white/70 dark:bg-slate-900/40",
               getWeatherGradient(weather.current.description)
             )}
           >
-
-            <div className="flex justify-between items-start relative z-10">
+            {/* Location header */}
+            <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                   <MapPin className="h-4 w-4 text-sky-500 dark:text-sky-400" />
-                  <span className="text-xs font-bold tracking-wide uppercase">
-                    Local Area Weather
-                  </span>
+                  <span className="text-xs font-bold tracking-widest uppercase">Current Conditions</span>
                 </div>
-                <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
                   {selectedCity.name}
                   {selectedCity.country && (
-                    <span className="text-slate-500 dark:text-slate-400 font-semibold text-2xl">, {selectedCity.country}</span>
-                  )}
-                </h2>
-                <span className="inline-block text-[10px] bg-slate-100 dark:bg-slate-900/80 px-2 py-0.5 rounded-md text-slate-500 dark:text-slate-550 font-mono">
-                  LAT: {selectedCity.lat.toFixed(3)} / LON: {selectedCity.lon.toFixed(3)}
-                </span>
-              </div>
-              <div className="p-4 bg-white/70 dark:bg-slate-900/40 rounded-2xl border border-slate-200/50 dark:border-slate-800/40 shadow-sm backdrop-blur-md">
-                {getWeatherIcon(weather.current.icon, "h-12 w-12")}
-              </div>
-            </div>
-
-            <div className="my-8 flex items-baseline gap-2 relative z-10">
-              <span className="text-7xl sm:text-8xl font-black tracking-tighter text-slate-900 dark:text-white">
-                {formatTemp(weather.current.temp)}°{units === "metric" ? "C" : "F"}
-              </span>
-              <div className="flex flex-col">
-                <span className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white capitalize leading-tight">
-                  {weather.current.description}
-                </span>
-                <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                  Feels like <span className="font-semibold text-slate-800 dark:text-slate-200">{formatTemp(weather.current.feels_like)}°{units === "metric" ? "C" : "F"}</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Quick Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 border-t border-slate-200 dark:border-slate-800/40 pt-6 relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900/60 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200/50 dark:border-0">
-                  <Thermometer className="h-4 w-4" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-500 uppercase font-semibold">Feels Like</span>
-                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    {formatTemp(weather.current.feels_like)}°{units === "metric" ? "C" : "F"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900/60 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200/50 dark:border-0">
-                  <Droplets className="h-4 w-4" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-500 uppercase font-semibold">Humidity</span>
-                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{weather.current.humidity}%</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900/60 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200/50 dark:border-0">
-                  <Wind className="h-4 w-4" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-500 uppercase font-semibold">Wind</span>
-                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    {formatWindSpeed(weather.current.wind_speed)} {units === "metric" ? "km/h" : "mph"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900/60 text-sky-650 dark:text-sky-400 shadow-sm border border-slate-200/50 dark:border-0">
-                  <Sun className="h-4 w-4 text-amber-500 dark:text-amber-400" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-500 uppercase font-semibold">UV Index</span>
-                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    {weather.current.uv_index !== undefined ? weather.current.uv_index : 3}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 col-span-2 md:col-span-1">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900/60 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200/50 dark:border-0">
-                  <CloudRain className="h-4 w-4" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-500 uppercase font-semibold">Rain</span>
-                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    {formatPrecipitation(weather.current.precipitation !== undefined ? weather.current.precipitation : 0)} {units === "metric" ? "mm" : "in"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* AI Insights summary */}
-          <div className="rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 flex flex-col justify-between shadow-xl backdrop-blur-sm dark:border-slate-800/40 dark:bg-slate-950/45">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                  <Sparkles className="h-4.5 w-4.5 animate-pulse" />
-                </div>
-                <h3 className="text-md font-bold text-slate-900 dark:text-white">AI Summary Insight</h3>
-              </div>
-              {aiSummary ? (
-                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic font-normal">
-                  &ldquo;{aiSummary}&rdquo;
-                </p>
-              ) : isAiLoading ? (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <Loader2 className="h-6 w-6 animate-spin text-sky-500 dark:text-sky-400" />
-                  <span className="text-xs text-slate-550 dark:text-slate-500 font-medium">Generating weather insights...</span>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3 py-2">
-                  <button
-                    onClick={handleFetchAiSummary}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-semibold text-xs py-2.5 px-4 shadow-md shadow-blue-500/10 hover:shadow-lg hover:shadow-blue-500/20 active:scale-95 transition-all duration-200 cursor-pointer"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Generate AI Summary
-                  </button>
-                  <p className="text-[10px] text-slate-500 leading-normal text-center">
-                    Uses upstream generative model (Gemini) to synthesize local environment telemetry. Trigger manually to optimize API quota limits.
-                  </p>
-                  {aiError && (
-                    <span className="text-[11px] text-red-500 text-center font-medium mt-1">
-                      {aiError}
+                    <span className="text-slate-400 dark:text-slate-400 font-semibold text-xl sm:text-2xl">
+                      , {selectedCity.country}
                     </span>
                   )}
+                </h2>
+                <span className="inline-block text-[10px] bg-slate-100 dark:bg-slate-900/80 px-2 py-0.5 rounded-md text-slate-500 dark:text-slate-500 font-mono">
+                  {selectedCity.lat.toFixed(3)}°, {selectedCity.lon.toFixed(3)}°
+                </span>
+              </div>
+
+              <div className="flex flex-col items-end gap-2">
+                <div className="p-3 bg-white/70 dark:bg-slate-900/40 rounded-2xl border border-slate-200/50 dark:border-slate-800/40 shadow-sm backdrop-blur-md">
+                  {getWeatherIcon(weather.current.icon, "h-12 w-12")}
                 </div>
-              )}
+                {weather.current.aqi !== undefined && (
+                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold", aqiColor(weather.current.aqi))}>
+                    <Leaf className="h-3.5 w-3.5" />
+                    AQI: {aqiLabel(weather.current.aqi)}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="border-t border-slate-100 dark:border-slate-900 pt-4 mt-6 text-[10px] text-slate-500 flex justify-between">
-              <span>Forecast Analysis</span>
-              <span>Gemini Engine</span>
+
+            {/* Temperature */}
+            <div className="my-5 flex items-baseline gap-3">
+              <span className="text-7xl sm:text-8xl font-black tracking-tighter text-slate-900 dark:text-white">
+                {fmtTemp(weather.current.temp)}{tempUnit}
+              </span>
+              <div>
+                <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white capitalize">
+                  {weather.current.description}
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Feels like{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {fmtTemp(weather.current.feels_like)}{tempUnit}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* Sunrise / Sunset */}
+            {(weather.current.sunrise || weather.current.sunset) && (
+              <div className="flex items-center gap-6 mb-5">
+                <div className="flex items-center gap-2 text-amber-500 dark:text-amber-400 cursor-help" title="Sunrise local time">
+                  <Sunrise className="h-4 w-4" />
+                  <span className="text-xs font-semibold">{formatSunTime(weather.current.sunrise)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-orange-500 dark:text-orange-400 cursor-help" title="Sunset local time">
+                  <Sunset className="h-4 w-4" />
+                  <span className="text-xs font-semibold">{formatSunTime(weather.current.sunset)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Metrics grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-slate-200/60 dark:border-slate-800/40 pt-6">
+              <MetricTile icon={<Droplets className="h-4 w-4 text-sky-500 dark:text-sky-400" />} label="Humidity" value={`${weather.current.humidity}%`} title="Relative humidity (percentage of water vapor in the air)" />
+              <MetricTile
+                icon={<Wind className="h-4 w-4 text-sky-500 dark:text-sky-400" />}
+                label="Wind"
+                value={`${fmtWind(weather.current.wind_speed)} ${windUnit} ${windDegToCardinal(weather.current.wind_deg)}`}
+                title="Current wind speed and cardinal blowing direction"
+              />
+              <MetricTile icon={<Gauge className="h-4 w-4 text-sky-500 dark:text-sky-400" />} label="Pressure" value={weather.current.pressure !== undefined ? `${weather.current.pressure} hPa` : "—"} title="Atmospheric pressure at sea level in hectopascals (hPa)" />
+              <MetricTile icon={<Eye className="h-4 w-4 text-sky-500 dark:text-sky-400" />} label="Visibility" value={weather.current.visibility !== undefined ? `${weather.current.visibility} km` : "—"} title="Maximum visible distance range in kilometers (km)" />
+              <MetricTile icon={<Cloud className="h-4 w-4 text-sky-500 dark:text-sky-400" />} label="Cloud Cover" value={weather.current.clouds !== undefined ? `${weather.current.clouds}%` : "—"} title="Percentage of the sky covered by clouds" />
+              <MetricTile
+                icon={<Navigation className="h-4 w-4 text-sky-500 dark:text-sky-400" style={{ transform: weather.current.wind_deg !== undefined ? `rotate(${weather.current.wind_deg}deg)` : undefined }} />}
+                label="Wind Dir"
+                value={weather.current.wind_deg !== undefined ? `${windDegToCardinal(weather.current.wind_deg)} (${weather.current.wind_deg}°)` : "—"}
+                title="Wind direction angle relative to true North"
+              />
+              <MetricTile
+                icon={<Sun className="h-4 w-4 text-amber-500" />}
+                label="UV Index"
+                value={
+                  weather.current.uv_index !== undefined ? (
+                    <span className={uvLabel(weather.current.uv_index).color}>
+                      {weather.current.uv_index.toFixed(1)} — {uvLabel(weather.current.uv_index).text}
+                    </span>
+                  ) : "—"
+                }
+                title="Ultraviolet radiation intensity index (risk level scale)"
+              />
+              <MetricTile
+                icon={<Droplet className="h-4 w-4 text-sky-500 dark:text-sky-400" />}
+                label="Dew Point"
+                value={weather.current.dew_point !== undefined ? `${fmtTemp(weather.current.dew_point)}${tempUnit}` : "—"}
+                title="The dew point temperature at which air condenses into moisture droplets"
+              />
             </div>
           </div>
 
-          {/* Forecast Trend Chart */}
-          <div className="lg:col-span-2 rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20">
+          {/* ════ AI Summary Card ══════════════════════════════════════════════ */}
+          <div className="rounded-3xl border border-slate-200/80 bg-gradient-to-br from-sky-500/5 to-indigo-500/5 p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 relative overflow-hidden flex flex-col justify-between h-full min-h-[350px] lg:min-h-0">
+            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+              <Sparkles className="h-16 w-16 text-sky-500" />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <h3 className="text-md font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Sparkles className="h-4.5 w-4.5 text-sky-500 animate-pulse" />
+                  AI Overview
+                </h3>
+                {aiSummary && !isAiLoading && (
+                  <button
+                    type="button"
+                    onClick={() => selectedCity && fetchAiSummary(selectedCity.lat, selectedCity.lon, true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider text-sky-600 bg-sky-50 hover:bg-sky-100 dark:text-sky-400 dark:bg-sky-950/40 border border-sky-200/50 dark:border-sky-850/40 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Refresh
+                  </button>
+                )}
+              </div>
+
+              {isAiLoading ? (
+                <div className="flex flex-col items-center justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-sky-500" />
+                  <span className="text-xs text-slate-500 mt-2 font-medium">Weatherly AI is thinking...</span>
+                </div>
+              ) : aiError ? (
+                <p className="text-xs text-red-500 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4" />
+                  {aiError}
+                </p>
+              ) : (
+                <p className="text-sm sm:text-[15px] leading-relaxed font-medium text-slate-700 dark:text-slate-200 pr-2">
+                  {aiSummary || "Select a city to generate an AI summary."}
+                </p>
+              )}
+            </div>
+
+            <span className="text-[10px] text-slate-400 text-right mt-6 border-t border-slate-100/50 dark:border-slate-900/50 pt-3">
+              Weatherly AI Summary
+            </span>
+          </div>
+
+          {/* ════ Hourly Forecast (Horizontal Row) ════════════════════════════ */}
+          <div className="lg:col-span-3 rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20">
             <h3 className="text-md font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-              <TrendingUp className="h-4.5 w-4.5 text-sky-500 dark:text-sky-400" />
-              7-Day Temperature Trend
+              <Compass className="h-4.5 w-4.5 text-sky-500" />
+              Hourly Forecast (24h)
             </h3>
-            
-            <div className="h-64 w-full text-slate-700 dark:text-slate-350">
+            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin w-full justify-between lg:overflow-x-visible">
+              {(weather.hourly ?? []).slice(0, 24).map((hour, idx) => (
+                <div
+                  key={idx}
+                  className="flex-1 flex flex-col items-center justify-between min-w-[85px] max-w-[160px] rounded-2xl bg-slate-50 border border-slate-100 p-3.5 hover:bg-slate-100/60 dark:bg-slate-900/40 dark:border-slate-900/60 dark:hover:bg-slate-900/80 transition-colors shrink-0 lg:shrink lg:min-w-0"
+                >
+                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">{hour.time}</span>
+                  <div className="my-2.5">
+                    {getWeatherIcon(hour.icon, "h-7 w-7")}
+                  </div>
+                  <span className="text-sm font-black text-slate-900 dark:text-white">{fmtTemp(hour.temp)}{tempUnit}</span>
+                  {hour.pop !== undefined && hour.pop > 0 ? (
+                    <span className="text-[9px] text-blue-500 dark:text-blue-400 font-bold flex items-center gap-0.5 mt-1.5">
+                      <Umbrella className="h-3 w-3" />{hour.pop}%
+                    </span>
+                  ) : (
+                    <span className="h-4 mt-1.5" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ════ AQI card ═════════════════════════════════════════════════════ */}
+          {weather.current.aqi !== undefined && (
+            <div className="rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 flex flex-col">
+              <h3 className="text-md font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Leaf className="h-4 w-4 text-emerald-500" />
+                Air Quality Index
+              </h3>
+              <div className={cn("rounded-2xl border p-6 text-center mb-4", aqiColor(weather.current.aqi))}>
+                <span className="text-5xl font-black">{weather.current.aqi}</span>
+                <p className="text-lg font-bold mt-1">{aqiLabel(weather.current.aqi)}</p>
+              </div>
+              <div className="space-y-2 text-xs">
+                {([
+                  { n: 1, label: "Good",      color: "bg-emerald-500" },
+                  { n: 2, label: "Fair",      color: "bg-lime-500" },
+                  { n: 3, label: "Moderate",  color: "bg-amber-500" },
+                  { n: 4, label: "Poor",      color: "bg-orange-500" },
+                  { n: 5, label: "Very Poor", color: "bg-red-500" },
+                ] as const).map((item) => (
+                  <div key={item.n} className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                    <div className={cn("h-2 w-2 rounded-full shrink-0", item.color)} />
+                    <span className={weather.current.aqi === item.n ? "font-bold text-slate-900 dark:text-white" : ""}>
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <span className="text-[10px] text-slate-400 text-right mt-auto pt-4 border-t border-slate-100 dark:border-slate-900">
+                OpenWeather Air Pollution API
+              </span>
+            </div>
+          )}
+
+          {/* ════ Temperature trend chart ══════════════════════════════════════ */}
+          <div className={cn(
+            "rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20",
+            weather.current.aqi !== undefined ? "lg:col-span-2" : "lg:col-span-3"
+          )}>
+            <h3 className="text-md font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-sky-500 dark:text-sky-400" />
+              {weather.daily?.length || 8}-Day Temperature Trend
+            </h3>
+            <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1e293b" : "#e2e8f0"} opacity={0.4} />
@@ -665,95 +710,122 @@ export default function Home() {
                     contentStyle={{
                       backgroundColor: isDark ? "#020617" : "#ffffff",
                       borderColor: isDark ? "#1e293b" : "#e2e8f0",
-                      borderRadius: "12px",
-                      fontSize: "12px",
+                      borderRadius: "12px", fontSize: "12px",
                       color: isDark ? "#f8fafc" : "#0f172a",
                     }}
                     labelStyle={{ fontWeight: "bold", color: isDark ? "#f8fafc" : "#0f172a" }}
+                    formatter={(value: any, name: any) => [`${value}${tempUnit}`, name]}
                   />
                   <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
-                  <Line type="monotone" dataKey="Max" stroke="#f59e0b" strokeWidth={3} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="Min" stroke="#38bdf8" strokeWidth={3} />
+                  <Line type="monotone" dataKey="Max" stroke="#f59e0b" strokeWidth={3} activeDot={{ r: 6 }} dot={false} />
+                  <Line type="monotone" dataKey="Min" stroke="#38bdf8" strokeWidth={3} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Hourly strip forecast */}
-          <div className="rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xl flex flex-col justify-between dark:border-slate-800/40 dark:bg-slate-950/20">
-            <div>
-              <h3 className="text-md font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                <Compass className="h-4.5 w-4.5 text-sky-550 dark:text-sky-400" />
-                Hourly Forecast
+          {/* ════ Weather alerts ════════════════════════════════════════════════ */}
+          {weather.alerts && weather.alerts.length > 0 && (
+            <div className="lg:col-span-3 rounded-3xl border border-red-500/30 bg-red-50/50 dark:bg-red-950/10 p-6 sm:p-8 shadow-xl dark:border-red-950/40">
+              <h3 className="text-md font-bold text-red-700 dark:text-red-400 mb-4 flex items-center gap-2">
+                <Triangle className="h-4 w-4 fill-red-500 text-red-500" />
+                Weather Alerts ({weather.alerts.length})
               </h3>
-              
-              {isHourlyLoading ? (
-                <div className="flex items-center justify-center py-10">
-                  <Loader2 className="h-6 w-6 animate-spin text-slate-400 dark:text-slate-500" />
-                </div>
-              ) : (
-                <div className="space-y-3.5 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-                  {hourly?.hourly?.slice(0, 8).map((hour, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-100 p-2.5 hover:bg-slate-100 dark:bg-slate-900/40 dark:border-slate-900/60 dark:hover:bg-slate-900/80 transition-colors"
-                    >
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{hour.time}</span>
-                      <div className="flex items-center gap-2">
-                        {getWeatherIcon(hour.icon, "h-4 w-4")}
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">{formatTemp(hour.temp)}°</span>
+              <div className="space-y-4">
+                {weather.alerts.map((alert, idx) => (
+                  <div key={idx} className="rounded-2xl border border-red-200 dark:border-red-900/50 bg-white/70 dark:bg-red-950/10 p-4">
+                    <div className="flex items-start justify-between gap-4 mb-2">
+                      <div>
+                        <span className="text-sm font-bold text-red-700 dark:text-red-400">{alert.event}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 ml-2">— {alert.sender_name}</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-500 capitalize line-clamp-1">
-                        {hour.description}
-                      </span>
+                      <div className="text-[10px] text-slate-500 text-right shrink-0">
+                        {new Date(alert.start * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {" → "}
+                        {new Date(alert.end * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                    <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-3">{alert.description}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-            
-            <span className="text-[10px] text-slate-450 dark:text-slate-500 text-right mt-4 border-t border-slate-100 dark:border-slate-900 pt-3">
-              Quota Optimized
-            </span>
-          </div>
+          )}
 
-          {/* 7-Day Daily Forecast Cards List */}
+
+
+          {/* ════ Daily Forecast ══════════════════════════════════════════════ */}
           <div className="lg:col-span-3 rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20">
             <h3 className="text-md font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-              <Calendar className="h-4.5 w-4.5 text-sky-550 dark:text-sky-400" />
-              7-Day Daily Forecast Cards
+              <Calendar className="h-4 w-4 text-sky-500 dark:text-sky-400" />
+              {weather.daily?.length || 8}-Day Daily Forecast
             </h3>
-            
-            <div className="grid gap-4 grid-cols-2 sm:grid-cols-4 lg:grid-cols-7">
-              {weather.daily?.map((day, idx) => (
+            <div className={cn(
+              "grid gap-4 grid-cols-2 sm:grid-cols-4",
+              weather.daily?.length === 7 ? "lg:grid-cols-7" :
+              weather.daily?.length === 6 ? "lg:grid-cols-6" :
+              weather.daily?.length === 5 ? "lg:grid-cols-5" :
+              "lg:grid-cols-8"
+            )}>
+              {weather.daily?.slice(0, 8).map((day, idx) => (
                 <div
                   key={idx}
-                  className="flex flex-col items-center justify-between rounded-2xl bg-slate-50 border border-slate-100 p-4 hover:bg-slate-100/55 dark:bg-slate-900/40 dark:border-slate-900/60 dark:hover:bg-slate-900/80 transition-all duration-200 group"
+                  className="flex flex-col items-center justify-between rounded-2xl bg-slate-50 border border-slate-100 p-3 hover:bg-slate-100/60 dark:bg-slate-900/40 dark:border-slate-900/60 dark:hover:bg-slate-900/80 transition-all group"
                 >
                   <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     {day.day_of_week.slice(0, 3)}
                   </span>
-                  
-                  <div className="my-3.5 transform group-hover:scale-110 transition-transform duration-200">
-                    {getWeatherIcon(day.icon, "h-8 w-8")}
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{day.date?.slice(5)}</span>
+
+                  <div className="my-3 transform group-hover:scale-110 transition-transform">
+                    {getWeatherIcon(day.icon, "h-7 w-7")}
                   </div>
-                  
-                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 capitalize text-center line-clamp-1">
+
+                  <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 capitalize text-center line-clamp-1">
                     {day.description}
                   </span>
 
-                  <div className="flex items-center gap-2 mt-3 text-xs">
-                    <span className="font-extrabold text-slate-900 dark:text-white">
-                      {formatTemp(day.temp_max)}°
-                    </span>
-                    <span className="text-slate-400 font-medium">
-                      {formatTemp(day.temp_min)}°
-                    </span>
+                  {/* High / Low */}
+                  <div className="flex items-center gap-2 mt-2 text-xs">
+                    <span className="font-extrabold text-slate-900 dark:text-white">{fmtTemp(day.temp_max)}{tempUnit}</span>
+                    <span className="text-slate-400 font-medium">{fmtTemp(day.temp_min)}{tempUnit}</span>
                   </div>
+
+                  {/* PoP */}
+                  {day.pop !== undefined && day.pop > 0 && (
+                    <div className="flex items-center gap-1 mt-1 text-[10px] text-blue-500 dark:text-blue-400">
+                      <Umbrella className="h-3 w-3" />{day.pop}%
+                    </div>
+                  )}
+
+                  {/* UV */}
+                  {day.uv_index !== undefined && (
+                    <div className={cn("text-[10px] mt-0.5 font-semibold", uvLabel(day.uv_index).color)}>
+                      UV {day.uv_index?.toFixed(0)}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
+
+          {/* ════ Smart Activity & Farming Advisor ════════════════════════════ */}
+          <div className="lg:col-span-3">
+            <ActivityAdvisor
+              current={weather.current}
+              units={units}
+            />
+          </div>
+
+          {/* ════ Weather radar map ════════════════════════════════════════════ */}
+          <div className="lg:col-span-3">
+            <WeatherMap
+              lat={selectedCity.lat}
+              lon={selectedCity.lon}
+              cityName={selectedCity.name}
+            />
+          </div>
+
         </div>
       )}
     </div>

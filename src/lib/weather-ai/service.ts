@@ -1,532 +1,385 @@
-import { requestWeatherAI, localUsageMemory } from "./client";
-import { redis } from "../cache/redis";
-import { WeatherResponse, HourlyResponse, TreeAnalysisResult, TreesQuotaResponse, UsageResponse, CurrentWeather, DailyForecast } from "./types";
+import { requestOWM } from "../openweather/client";
+import {
+  WeatherResponse,
+  HourlyResponse,
+  CurrentWeather,
+  DailyForecast,
+  HourlyForecastItem,
+  WeatherAlert,
+} from "./types";
 
-function mapWeatherCode(code: number): { description: string; icon: string } {
-  switch (code) {
-    case 0:
-      return { description: "Clear sky", icon: "sun" };
-    case 1:
-      return { description: "Mainly clear", icon: "sun" };
-    case 2:
-      return { description: "Partly cloudy", icon: "cloud" };
-    case 3:
-      return { description: "Overcast", icon: "cloud" };
-    case 45:
-    case 48:
-      return { description: "Foggy", icon: "cloud" };
-    case 51:
-      return { description: "Light drizzle", icon: "rain" };
-    case 53:
-      return { description: "Moderate drizzle", icon: "rain" };
-    case 55:
-      return { description: "Dense drizzle", icon: "rain" };
-    case 56:
-    case 57:
-      return { description: "Freezing drizzle", icon: "rain" };
-    case 61:
-      return { description: "Slight rain", icon: "rain" };
-    case 63:
-      return { description: "Moderate rain", icon: "rain" };
-    case 65:
-      return { description: "Heavy rain", icon: "rain" };
-    case 66:
-    case 67:
-      return { description: "Freezing rain", icon: "rain" };
-    case 71:
-      return { description: "Slight snow fall", icon: "snow" };
-    case 73:
-      return { description: "Moderate snow fall", icon: "snow" };
-    case 75:
-      return { description: "Heavy snow fall", icon: "snow" };
-    case 77:
-      return { description: "Snow grains", icon: "snow" };
-    case 80:
-      return { description: "Slight rain showers", icon: "rain" };
-    case 81:
-      return { description: "Moderate rain showers", icon: "rain" };
-    case 82:
-      return { description: "Violent rain showers", icon: "rain" };
-    case 85:
-    case 86:
-      return { description: "Snow showers", icon: "snow" };
-    case 95:
-      return { description: "Thunderstorm", icon: "thunder" };
-    case 96:
-    case 99:
-      return { description: "Thunderstorm with hail", icon: "thunder" };
-    default:
-      return { description: "Cloudy", icon: "cloud" };
+// ─────────────────────────────────────────────────────────────────────────────
+// Icon / description helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map OWM weather icon code (e.g. "01d", "10n") to our internal icon name.
+ */
+function mapOWMIcon(owmIcon: string): string {
+  if (!owmIcon) return "cloud";
+  const base = owmIcon.substring(0, 2);
+  switch (base) {
+    case "01": return "sun";
+    case "02":
+    case "03":
+    case "04": return "cloud";
+    case "09":
+    case "10": return "rain";
+    case "11": return "thunder";
+    case "13": return "snow";
+    case "50": return "mist";
+    default:   return "cloud";
   }
 }
 
-function generateFallbackSummary(current: any): string {
-  const temp = Math.round(current.temp);
-  const desc = current.description.toLowerCase();
-  const wind = current.wind_speed;
-  
-  let summary = `Currently, it's ${temp}°C and ${desc}. `;
-  if (temp > 28) {
-    summary += "It is quite warm outside, so stay hydrated. ";
-  } else if (temp < 12) {
-    summary += "It is chilly, so bundle up if you are heading out. ";
-  } else {
-    summary += "The temperature is moderate and comfortable. ";
-  }
-  
-  if (desc.includes("rain") || desc.includes("drizzle")) {
-    summary += "Carry an umbrella as wet conditions are expected. ";
-  } else if (desc.includes("clear") || desc.includes("sun")) {
-    summary += "Enjoy the clear skies and sunshine! ";
-  }
-  
-  if (wind > 15) {
-    summary += "Expect breezy conditions with gusty winds.";
-  }
-  
-  return summary;
+/** Capitalise the first letter of an OWM description string. */
+function capitalise(str: string): string {
+  if (!str) return "";
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function estimateHumidity(code: number, temp: number): number {
-  if ([0, 1].includes(code)) {
-    return temp > 30 ? 40 : 50;
-  }
-  if (code === 2) {
-    return temp > 30 ? 50 : 60;
-  }
-  if (code === 3) {
-    return 70;
-  }
-  if ([45, 48].includes(code)) {
-    return 95;
-  }
-  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
-    return 85;
-  }
-  if ([71, 73, 75, 77, 85, 86].includes(code)) {
-    return 80;
-  }
-  if ([95, 96, 99].includes(code)) {
-    return 90;
-  }
-  return 65;
-}
-
-function calculateFeelsLike(temp: number, humidity: number, windSpeedKmh: number): number {
-  if (temp <= 10) {
-    // 1. Cold Range: Wind Chill Index
-    if (windSpeedKmh > 4.8) {
-      const v = windSpeedKmh;
-      const feelsLike = 13.12 + 0.6215 * temp - 11.37 * Math.pow(v, 0.16) + 0.3965 * temp * Math.pow(v, 0.16);
-      return Math.round(feelsLike * 10) / 10;
-    }
-    return temp; // No wind chill if wind is calm
-  } else if (temp >= 20) {
-    // 2. Warm Range: Apparent Temperature (Steadman)
-    const wsMs = windSpeedKmh / 3.6;
-    const e = (humidity / 100) * 6.105 * Math.exp((17.27 * temp) / (237.7 + temp));
-    const feelsLike = temp + 0.33 * e - 0.7 * wsMs - 4.0;
-    return Math.round(Math.max(temp - 3, feelsLike) * 10) / 10;
-  } else {
-    // 3. Transition Range (10°C to 20°C): Smooth linear interpolation
-    const coldFeels = temp;
-    const wsMs = windSpeedKmh / 3.6;
-    const e = (humidity / 100) * 6.105 * Math.exp((17.27 * temp) / (237.7 + temp));
-    const warmFeels = temp + 0.33 * e - 0.7 * wsMs - 4.0;
-    
-    const weight = (temp - 10) / 10; // 0 at 10°C, 1 at 20°C
-    const feelsLike = coldFeels * (1 - weight) + warmFeels * weight;
-    return Math.round(feelsLike * 10) / 10;
-  }
-}
-
-function estimateUvIndex(code: number, timeStr?: string): number {
-  if (timeStr) {
-    try {
-      const hour = new Date(timeStr).getHours();
-      if (hour < 6 || hour > 18) return 0;
-      const distFromNoon = Math.abs(hour - 12);
-      let baseUv = Math.max(0, 10 - distFromNoon * 2);
-      if ([3, 45, 48].includes(code)) {
-        baseUv *= 0.3;
-      } else if (code === 2) {
-        baseUv *= 0.7;
-      } else if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 71, 73, 75, 77, 85, 86, 95, 96, 99].includes(code)) {
-        baseUv *= 0.15;
-      }
-      return Math.round(baseUv);
-    } catch (_) {}
-  }
-  if ([0, 1].includes(code)) return 6;
-  if (code === 2) return 4;
-  if (code === 3) return 2;
-  return 1;
-}
-
-function mapWeatherResponse(raw: any): WeatherResponse {
-  if (!raw) return raw;
-
-  const rawCurrent = raw.current || {};
-  const { description: defaultDesc, icon: defaultIcon } = mapWeatherCode(rawCurrent.weathercode ?? 0);
-  
-  const temp = rawCurrent.temp !== undefined ? rawCurrent.temp : (rawCurrent.temperature ?? 0);
-  const wind_speed = rawCurrent.wind_speed !== undefined ? rawCurrent.wind_speed : (rawCurrent.windspeed ?? 0);
-  const code = rawCurrent.weathercode ?? 0;
-  const humidity = rawCurrent.humidity !== undefined ? rawCurrent.humidity : estimateHumidity(code, temp);
-  const feels_like = rawCurrent.feels_like !== undefined ? rawCurrent.feels_like : calculateFeelsLike(temp, humidity, wind_speed);
-  
-  const current: CurrentWeather = {
-    temp,
-    feels_like,
-    humidity,
-    wind_speed,
-    description: rawCurrent.description ?? defaultDesc,
-    icon: rawCurrent.icon ?? defaultIcon,
+/** Extract description + icon from OWM `weather` array. */
+function mapWeather(weather: any[] = []): { description: string; icon: string } {
+  const w = weather[0] ?? {};
+  return {
+    description: capitalise(w.description ?? ""),
+    icon: mapOWMIcon(w.icon ?? ""),
   };
-
-  current.uv_index = rawCurrent.uv_index !== undefined ? rawCurrent.uv_index : estimateUvIndex(code, rawCurrent.time);
-
-  let currentPrecipitation = 0;
-  if (rawCurrent.precipitation !== undefined) {
-    currentPrecipitation = rawCurrent.precipitation;
-  } else if (raw.hourly && raw.hourly.length > 0) {
-    const currentHourStr = rawCurrent.time ? rawCurrent.time.substring(0, 13) + ":00" : "";
-    const matchedHour = raw.hourly.find((h: any) => h.time.startsWith(currentHourStr));
-    if (matchedHour && matchedHour.precipitation !== undefined) {
-      currentPrecipitation = matchedHour.precipitation;
-    } else if (raw.daily && raw.daily[0] && raw.daily[0].precipitation !== undefined) {
-      currentPrecipitation = raw.daily[0].precipitation;
-    }
-  } else if (raw.daily && raw.daily[0] && raw.daily[0].precipitation !== undefined) {
-    currentPrecipitation = raw.daily[0].precipitation;
-  }
-  current.precipitation = currentPrecipitation;
-
-  const daily: DailyForecast[] = (raw.daily ?? []).map((day: any) => {
-    const { description: dayDesc, icon: dayIcon } = mapWeatherCode(day.weathercode ?? 0);
-    const dateObj = new Date(day.date);
-    const dayOfWeek = isNaN(dateObj.getTime())
-      ? "Unknown"
-      : dateObj.toLocaleDateString("en-US", { weekday: "long" });
-
-    return {
-      date: day.date,
-      day_of_week: day.day_of_week ?? dayOfWeek,
-      temp_min: day.temp_min,
-      temp_max: day.temp_max,
-      description: day.description ?? dayDesc,
-      icon: day.icon ?? dayIcon,
-      precipitation: day.precipitation ?? 0,
-    };
-  });
-
-  const response: WeatherResponse = {
-    current,
-    daily,
-  };
-
-  if (raw.location !== undefined || raw.lat !== undefined || raw.lon !== undefined) {
-    response.location = {
-      city: raw.location?.city ?? "Local Area",
-      country: raw.location?.country ?? "Detected Location",
-      lat: raw.location?.lat ?? raw.lat ?? 0,
-      lon: raw.location?.lon ?? raw.lon ?? 0,
-    };
-  }
-
-  if (raw.ai_summary !== undefined && raw.ai_summary !== null) {
-    response.ai_summary = raw.ai_summary;
-    response.is_fallback = false;
-  } else if (raw.current !== undefined) {
-    response.ai_summary = generateFallbackSummary(current);
-    response.is_fallback = true;
-  }
-
-  return response;
 }
 
-function mapHourlyResponse(raw: any): HourlyResponse {
-  if (!raw || !Array.isArray(raw.hourly)) return raw;
+// ─────────────────────────────────────────────────────────────────────────────
+// Public helpers  (exported for use in page.tsx)
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const hourly = raw.hourly.map((hour: any) => {
-    const { description, icon } = mapWeatherCode(hour.weathercode ?? 0);
-    return {
-      time: hour.time,
-      temp: hour.temp,
-      description: hour.description ?? description,
-      icon: hour.icon ?? icon,
-      precipitation: hour.precipitation ?? 0,
-    };
-  });
-
-  return { hourly };
+/** Convert wind degrees to a 16-point cardinal direction string. */
+export function windDegToCardinal(deg: number): string {
+  const dirs = [
+    "N", "NNE", "NE", "ENE",
+    "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW",
+    "W", "WNW", "NW", "NNW",
+  ];
+  return dirs[Math.round(deg / 22.5) % 16];
 }
 
-export async function getWeatherGeo(ip: string): Promise<WeatherResponse> {
-  let lat = -1.2921; // Nairobi fallback
-  let lon = 36.8219;
-  let city = "Nairobi";
-  let country = "Kenya";
-  let resolvedGeo = false;
-
-  // Don't execute external GeoIP requests during testing
-  if (process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-    try {
-      const isPrivate = !ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost" || ip.startsWith("10.") || ip.startsWith("192.168.");
-      const geoUrl = isPrivate ? "http://ip-api.com/json/" : `http://ip-api.com/json/${ip}`;
-      const geoRes = await fetch(geoUrl);
-      if (geoRes.ok) {
-        const geoData = await geoRes.json();
-        if (geoData && geoData.status === "success") {
-          lat = geoData.lat;
-          lon = geoData.lon;
-          city = geoData.city || "Local Area";
-          country = geoData.country || "Detected Location";
-          resolvedGeo = true;
-        }
-      }
-    } catch (err) {
-      console.warn("[WeatherAI Service] ip-api.com resolution failed, falling back to upstream weather-geo:", err);
-    }
+/** OWM Air Quality Index label (1–5 scale). */
+export function aqiLabel(aqi: number): string {
+  switch (aqi) {
+    case 1: return "Good";
+    case 2: return "Fair";
+    case 3: return "Moderate";
+    case 4: return "Poor";
+    case 5: return "Very Poor";
+    default: return "Unknown";
   }
-
-  if (resolvedGeo) {
-    // Fetch the actual weather for these coordinates
-    const weatherData = await getWeather(lat, lon, "metric", 7, false);
-    // Inject the resolved location
-    weatherData.location = {
-      city,
-      country,
-      lat,
-      lon,
-    };
-    return weatherData;
-  }
-
-  const raw = await requestWeatherAI<any>("/v1/weather-geo", {
-    params: { ip },
-  });
-  const mapped = mapWeatherResponse(raw);
-
-  // If we have coordinates, reverse geocode to resolve city and country
-  if (mapped.location && mapped.location.lat && mapped.location.lon && process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-    try {
-      const url = new URL("https://nominatim.openstreetmap.org/reverse");
-      url.searchParams.append("lat", String(mapped.location.lat));
-      url.searchParams.append("lon", String(mapped.location.lon));
-      url.searchParams.append("format", "json");
-      url.searchParams.append("addressdetails", "1");
-      url.searchParams.append("accept-language", "en");
-
-      const response = await fetch(url.toString(), {
-        headers: {
-          "User-Agent": "Weatherly-App/1.0 (contact@weatherly.app)",
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const address = data.address || {};
-        mapped.location.city = address.city || address.town || address.village || address.suburb || address.county || "Local Area";
-        mapped.location.country = address.country || "Detected Location";
-      }
-    } catch (err) {
-      console.warn("[WeatherAI Service] Reverse geocoding failed:", err);
-    }
-  }
-
-  return mapped;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// One Call API 4.0  (data/3.0/onecall)
+// Single request → current + hourly + daily + alerts
+// Free tier: 1 000 calls/day
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all weather data via One Call API 4.0 (data/3.0/onecall).
+ * Falls back to data/2.5 endpoints if the key isn't yet subscribed to One Call.
+ */
 export async function getWeather(
   lat: number,
   lon: number,
-  units: string = "metric",
-  days: number = 7,
-  ai: boolean = true
+  units: string = "metric"
 ): Promise<WeatherResponse> {
-  const raw = await requestWeatherAI<any>("/v1/weather", {
-    params: {
-      lat,
-      lon,
-      units,
-      days,
-      ai,
-    },
-  });
-  return mapWeatherResponse(raw);
+  // ── 1. Try One Call API 4.0 (preferred, one request) ──────────────────────
+  let oneCall: any = null;
+  try {
+    oneCall = await requestOWM<any>("/data/3.0/onecall", {
+      params: { lat, lon, units, exclude: "minutely,15minutely" },
+    });
+  } catch (err: any) {
+    // 401 → key not yet subscribed to One Call 4.0; fall through to 2.5 fallback
+    if (err?.status !== 401) throw err;
+    console.warn("[OWM Service] One Call 4.0 returned 401 – falling back to data/2.5 endpoints");
+  }
+
+  if (oneCall) {
+    return mapOneCallResponse(oneCall, lat, lon, units);
+  }
+
+  // ── 2. Fallback: data/2.5/weather + data/2.5/forecast + air_pollution ─────
+  return getWeatherVia25(lat, lon, units);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Map One Call 4.0 response → WeatherResponse
+// ─────────────────────────────────────────────────────────────────────────────
+async function mapOneCallResponse(
+  raw: any,
+  lat: number,
+  lon: number,
+  units: string
+): Promise<WeatherResponse> {
+  const c = raw.current ?? {};
+
+  // Wind speed: One Call always returns m/s regardless of the `units` param for wind
+  // (unlike current weather which honours `units`). Convert when metric requested.
+  const windMs = c.wind_speed ?? 0;
+  const windDisplay = units === "metric" ? windMs * 3.6 : windMs;
+
+  // Try to enrich with AQI in parallel (best-effort)
+  let aqi: number | undefined;
+  try {
+    const airRaw = await requestOWM<any>("/data/2.5/air_pollution", {
+      params: { lat, lon },
+      skipRetry: true,
+    });
+    aqi = airRaw?.list?.[0]?.main?.aqi;
+  } catch (_) { /* ignore */ }
+
+  const current: CurrentWeather = {
+    temp: c.temp,
+    feels_like: c.feels_like,
+    humidity: c.humidity,
+    wind_speed: windDisplay,
+    wind_deg: c.wind_deg,
+    pressure: c.pressure,
+    visibility: c.visibility !== undefined ? Math.round(c.visibility / 100) / 10 : undefined, // m → km
+    clouds: c.clouds,
+    dew_point: c.dew_point,
+    uv_index: c.uvi,
+    precipitation: c.rain?.["1h"] ?? c.snow?.["1h"] ?? 0,
+    sunrise: c.sunrise,
+    sunset: c.sunset,
+    aqi,
+    ...mapWeather(c.weather),
+  };
+
+  // ── Daily (up to 8 days) ──────────────────────────────────────────────────
+  const daily: DailyForecast[] = (raw.daily ?? []).slice(0, 8).map((d: any) => {
+    const dateObj = new Date(d.dt * 1000);
+    const dateStr = dateObj.toISOString().split("T")[0];
+    const windDMs = d.wind_speed ?? 0;
+    return {
+      date: dateStr,
+      day_of_week: dateObj.toLocaleDateString("en-US", { weekday: "long" }),
+      temp_min: d.temp?.min ?? 0,
+      temp_max: d.temp?.max ?? 0,
+      temp_day: d.temp?.day,
+      temp_night: d.temp?.night,
+      precipitation: d.rain ?? d.snow ?? 0,
+      pop: d.pop !== undefined ? Math.round(d.pop * 100) : undefined,
+      uv_index: d.uvi,
+      sunrise: d.sunrise,
+      sunset: d.sunset,
+      humidity: d.humidity,
+      wind_speed: units === "metric" ? windDMs * 3.6 : windDMs,
+      ...mapWeather(d.weather),
+    };
+  });
+
+  // ── Hourly (next 48h → trim to next 24 slots = 24h) ───────────────────────
+  const hourly: HourlyForecastItem[] = (raw.hourly ?? []).slice(0, 24).map((h: any) => {
+    const timeObj = new Date(h.dt * 1000);
+    const timeStr = timeObj.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const windHMs = h.wind_speed ?? 0;
+    return {
+      time: timeStr,
+      temp: h.temp,
+      feels_like: h.feels_like,
+      precipitation: h.rain?.["1h"] ?? h.snow?.["1h"] ?? 0,
+      pop: h.pop !== undefined ? Math.round(h.pop * 100) : undefined,
+      wind_speed: units === "metric" ? windHMs * 3.6 : windHMs,
+      humidity: h.humidity,
+      ...mapWeather(h.weather),
+    };
+  });
+
+  // ── Alerts ────────────────────────────────────────────────────────────────
+  const alerts: WeatherAlert[] = (raw.alerts ?? []).map((a: any) => ({
+    sender_name: a.sender_name ?? "",
+    event: a.event ?? "",
+    start: a.start,
+    end: a.end,
+    description: a.description ?? "",
+  }));
+
+  return {
+    current,
+    daily,
+    hourly,
+    alerts: alerts.length > 0 ? alerts : undefined,
+    location: {
+      city: undefined, // not returned by One Call — enriched by geocode in auto route
+      lat: raw.lat ?? lat,
+      lon: raw.lon ?? lon,
+      timezone: raw.timezone,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fallback: data/2.5 endpoints (when key not subscribed to One Call)
+// ─────────────────────────────────────────────────────────────────────────────
+async function getWeatherVia25(
+  lat: number,
+  lon: number,
+  units: string
+): Promise<WeatherResponse> {
+  const [currentResult, forecastResult, airResult] = await Promise.allSettled([
+    requestOWM<any>("/data/2.5/weather", { params: { lat, lon, units } }),
+    requestOWM<any>("/data/2.5/forecast", { params: { lat, lon, units } }),
+    requestOWM<any>("/data/2.5/air_pollution", { params: { lat, lon } }),
+  ]);
+
+  if (currentResult.status === "rejected") throw currentResult.reason;
+
+  const c = currentResult.value;
+  const forecast = forecastResult.status === "fulfilled" ? forecastResult.value : null;
+  const air = airResult.status === "fulfilled" ? airResult.value : null;
+
+  const windMs = c.wind?.speed ?? 0;
+  const windDisplay = units === "metric" ? windMs * 3.6 : windMs;
+
+  const current: CurrentWeather = {
+    temp: c.main.temp,
+    feels_like: c.main.feels_like,
+    humidity: c.main.humidity,
+    wind_speed: windDisplay,
+    wind_deg: c.wind?.deg,
+    pressure: c.main.pressure,
+    visibility: c.visibility ? Math.round(c.visibility / 100) / 10 : undefined,
+    clouds: c.clouds?.all,
+    precipitation: c.rain?.["1h"] ?? c.snow?.["1h"] ?? 0,
+    sunrise: c.sys?.sunrise,
+    sunset: c.sys?.sunset,
+    aqi: air?.list?.[0]?.main?.aqi,
+    ...mapWeather(c.weather),
+  };
+
+  // Group 3-hour slots into daily aggregates
+  const daily: DailyForecast[] = [];
+  if (forecast?.list) {
+    const byDay = new Map<string, any[]>();
+    for (const slot of forecast.list) {
+      const date = (slot.dt_txt as string).split(" ")[0];
+      if (!byDay.has(date)) byDay.set(date, []);
+      byDay.get(date)!.push(slot);
+    }
+    for (const [date, slots] of byDay) {
+      if (daily.length >= 8) break;
+      const temps = slots.map((s: any) => s.main.temp);
+      const midSlot = slots[Math.floor(slots.length / 2)];
+      const dateObj = new Date(date + "T12:00:00");
+
+      // Aggregate probability of precipitation (PoP) as the max pop of slots in the day
+      const pops = slots.map((s: any) => s.pop !== undefined ? Math.round(s.pop * 100) : 0);
+      const maxPop = pops.length > 0 ? Math.max(...pops) : 0;
+
+      daily.push({
+        date,
+        day_of_week: dateObj.toLocaleDateString("en-US", { weekday: "long" }),
+        temp_min: Math.min(...temps),
+        temp_max: Math.max(...temps),
+        precipitation: slots.reduce((s: number, sl: any) => s + (sl.rain?.["3h"] ?? sl.snow?.["3h"] ?? 0), 0),
+        pop: maxPop,
+        humidity: midSlot.main.humidity,
+        wind_speed: units === "metric"
+          ? (midSlot.wind?.speed ?? 0) * 3.6
+          : (midSlot.wind?.speed ?? 0),
+        ...mapWeather(midSlot.weather),
+      });
+    }
+  }
+
+  // Hourly from 3h forecast (first 8 entries = 24h)
+  const hourly: HourlyForecastItem[] = (forecast?.list ?? []).slice(0, 8).map((slot: any) => {
+    const t = new Date(slot.dt_txt);
+    return {
+      time: t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+      temp: slot.main.temp,
+      feels_like: slot.main.feels_like,
+      humidity: slot.main.humidity,
+      wind_speed: units === "metric"
+        ? (slot.wind?.speed ?? 0) * 3.6
+        : (slot.wind?.speed ?? 0),
+      precipitation: slot.rain?.["3h"] ?? slot.snow?.["3h"] ?? 0,
+      pop: slot.pop !== undefined ? Math.round(slot.pop * 100) : undefined,
+      ...mapWeather(slot.weather),
+    };
+  });
+
+  return {
+    current,
+    daily,
+    hourly,
+    location: {
+      city: c.name,
+      country: c.sys?.country,
+      lat: c.coord?.lat ?? lat,
+      lon: c.coord?.lon ?? lon,
+      timezone: c.timezone,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hourly route helper  (re-uses data already fetched by getWeather)
+// ─────────────────────────────────────────────────────────────────────────────
 export async function getHourly(
   lat: number,
   lon: number,
   units: string = "metric"
 ): Promise<HourlyResponse> {
-  const raw = await requestWeatherAI<any>("/v1/hourly", {
-    params: {
-      lat,
-      lon,
-      units,
-      ai: false,
-    },
-  });
-  return mapHourlyResponse(raw);
+  const data = await getWeather(lat, lon, units);
+  return { hourly: data.hourly ?? [] };
 }
 
-export async function analyzeTreeImage(
-  imageFile: File,
-  acres?: number,
-  farmerId?: string,
-  county?: string,
-  notes?: string
-): Promise<TreeAnalysisResult> {
-  const formData = new FormData();
-  formData.append("image", imageFile);
-  
-  if (acres !== undefined) {
-    formData.append("landAcres", String(acres));
-  }
-  if (farmerId) {
-    formData.append("farmerId", farmerId);
-  }
-  if (county) {
-    formData.append("county", county);
-  }
-  if (notes) {
-    formData.append("notes", notes);
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// IP-based auto-detection  →  weather
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getWeatherGeo(ip: string): Promise<WeatherResponse> {
+  let lat = -1.2921; // Nairobi fallback
+  let lon = 36.8219;
+  let city = "Nairobi";
+  let country = "Kenya";
 
-  return requestWeatherAI<TreeAnalysisResult>("/v1/trees/analyze", {
-    method: "POST",
-    body: formData,
-    // Since analyzing tree images might be non-idempotent or slow, we don't automatically retry it.
-    skipRetry: true, 
-  });
-}
+  const isTest =
+    process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 
-export async function getTreesQuota(): Promise<TreesQuotaResponse> {
-  try {
-    return await requestWeatherAI<TreesQuotaResponse>("/v1/trees/quota");
-  } catch (error: any) {
-    if (error && error.code === "CONFIG_ERROR") {
-      throw error;
-    }
-    console.warn("[WeatherAI Service] /v1/trees/quota returned an error. Using fallback quota.", error);
-    return {
-      remaining_uploads: 5,
-      limit_uploads: 5,
-      reset_time: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-    };
-  }
-}
-
-export async function getUsage(): Promise<UsageResponse> {
-  // We want to fetch the correct usage from upstream if not initialized/cached yet.
-  // After the first time, we only use/increment the application-side metrics stored in Redis/memory.
-  let requests_count = 0;
-  let ai_requests_count = 0;
-  let requests_limit = 1000;
-  let ai_requests_limit = 200;
-  let billing_period_end = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
-
-  if (redis) {
+  if (!isTest) {
     try {
-      const initialized = await redis.get<any>("usage:app:initialized");
-      if (initialized === "true" || initialized === true) {
-        const storedReq = await redis.get<number>("usage:app:requests_count");
-        const storedAI = await redis.get<number>("usage:app:ai_requests_count");
-        const storedReqLimit = await redis.get<number>("usage:app:requests_limit");
-        const storedAILimit = await redis.get<number>("usage:app:ai_requests_limit");
-        const storedBillingEnd = await redis.get<string>("usage:app:billing_period_end");
+      const isPrivate =
+        !ip ||
+        ip === "127.0.0.1" ||
+        ip === "::1" ||
+        ip === "localhost" ||
+        ip.startsWith("10.") ||
+        ip.startsWith("192.168.");
 
-        requests_count = storedReq !== null ? Number(storedReq) : 0;
-        ai_requests_count = storedAI !== null ? Number(storedAI) : 0;
-        if (storedReqLimit !== null) requests_limit = Number(storedReqLimit);
-        if (storedAILimit !== null) ai_requests_limit = Number(storedAILimit);
-        if (storedBillingEnd !== null) billing_period_end = storedBillingEnd;
-      } else {
-        // Fetch from upstream for the first time
-        try {
-          const upstream = await requestWeatherAI<any>("/v1/usage");
-          requests_count = typeof upstream.used === "number" ? upstream.used : 0;
-          requests_limit = typeof upstream.limit === "number" ? upstream.limit : 1000;
-          ai_requests_count = 0;
-          ai_requests_limit = 200;
-          billing_period_end = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
+      const geoUrl = isPrivate
+        ? "http://ip-api.com/json/"
+        : `http://ip-api.com/json/${ip}`;
 
-          await redis.set("usage:app:requests_count", requests_count);
-          await redis.set("usage:app:ai_requests_count", ai_requests_count);
-          await redis.set("usage:app:requests_limit", requests_limit);
-          await redis.set("usage:app:ai_requests_limit", ai_requests_limit);
-          await redis.set("usage:app:billing_period_end", billing_period_end);
-          await redis.set("usage:app:initialized", "true");
-        } catch (apiErr) {
-          console.error("[WeatherAI Service] Failed to initialize usage from upstream API:", apiErr);
+      const geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(4000) });
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        if (geoData?.status === "success") {
+          lat = geoData.lat;
+          lon = geoData.lon;
+          city = geoData.city || "Local Area";
+          country = geoData.country || "Detected Location";
         }
       }
     } catch (err) {
-      console.error("[WeatherAI Service] Failed to read/write usage in Redis, falling back to local memory:", err);
-      // Fallback to local memory
-      if (localUsageMemory.initialized) {
-        requests_count = localUsageMemory.requests_count;
-        ai_requests_count = localUsageMemory.ai_requests_count;
-        requests_limit = localUsageMemory.requests_limit;
-        ai_requests_limit = localUsageMemory.ai_requests_limit;
-        billing_period_end = localUsageMemory.billing_period_end;
-      } else {
-        try {
-          const upstream = await requestWeatherAI<any>("/v1/usage");
-          requests_count = typeof upstream.used === "number" ? upstream.used : 0;
-          requests_limit = typeof upstream.limit === "number" ? upstream.limit : 1000;
-          ai_requests_count = 0;
-          ai_requests_limit = 200;
-          billing_period_end = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
-
-          localUsageMemory.requests_count = requests_count;
-          localUsageMemory.ai_requests_count = ai_requests_count;
-          localUsageMemory.requests_limit = requests_limit;
-          localUsageMemory.ai_requests_limit = ai_requests_limit;
-          localUsageMemory.billing_period_end = billing_period_end;
-          localUsageMemory.initialized = true;
-        } catch (apiErr) {
-          console.error("[WeatherAI Service] Failed to initialize usage from upstream API for local memory:", apiErr);
-        }
-      }
-    }
-  } else {
-    // Redis is null, use local memory
-    if (localUsageMemory.initialized) {
-      requests_count = localUsageMemory.requests_count;
-      ai_requests_count = localUsageMemory.ai_requests_count;
-      requests_limit = localUsageMemory.requests_limit;
-      ai_requests_limit = localUsageMemory.ai_requests_limit;
-      billing_period_end = localUsageMemory.billing_period_end;
-    } else {
-      try {
-        const upstream = await requestWeatherAI<any>("/v1/usage");
-        requests_count = typeof upstream.used === "number" ? upstream.used : 0;
-        requests_limit = typeof upstream.limit === "number" ? upstream.limit : 1000;
-        ai_requests_count = 0;
-        ai_requests_limit = 200;
-        billing_period_end = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
-
-        localUsageMemory.requests_count = requests_count;
-        localUsageMemory.ai_requests_count = ai_requests_count;
-        localUsageMemory.requests_limit = requests_limit;
-        localUsageMemory.ai_requests_limit = ai_requests_limit;
-        localUsageMemory.billing_period_end = billing_period_end;
-        localUsageMemory.initialized = true;
-      } catch (apiErr) {
-        console.error("[WeatherAI Service] Failed to initialize usage from upstream API without Redis:", apiErr);
-      }
+      console.warn("[OWM Service] IP geolocation failed, using fallback:", err);
     }
   }
 
-  return {
-    requests_count,
-    requests_limit,
-    ai_requests_count,
-    ai_requests_limit,
-    billing_period_end,
-  };
+  const weatherData = await getWeather(lat, lon, "metric");
+  // Prefer geo-resolved city name over OWM's (One Call doesn't include it)
+  weatherData.location = { city, country, lat, lon };
+  return weatherData;
 }
