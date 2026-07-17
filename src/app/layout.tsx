@@ -4,6 +4,7 @@ import "./globals.css";
 import Providers from "./providers";
 import Navbar from "@/components/shared/Navbar";
 import WeatherChat from "@/components/shared/WeatherChat";
+import Footer from "@/components/shared/Footer";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -39,6 +40,7 @@ export default function RootLayout({
           <main className="flex-1 w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
             {children}
           </main>
+          <Footer />
           <WeatherChat />
         </Providers>
       </body>

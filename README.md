@@ -24,6 +24,7 @@ Beyond basic API consumption, Weatherly implements key production concerns:
 
 - **Live Demo**: [https://weatherly-66o7.onrender.com](https://weatherly-66o7.onrender.com)
 - **GitHub Repository**: [MishkatIT/weatherly](https://github.com/MishkatIT/weatherly)
+- **Developer LinkedIn**: [Mishkatul Islam](https://linkedin.com/in/mishkatit)
 - **Deployed on**: [Render](https://render.com)
 
 ---
@@ -399,3 +400,12 @@ If traffic scales, the following can be introduced:
 1. **Queue-Based Analysis**: Image analysis (`/v1/trees/analyze`) is slow. At scale, uploads should write to an S3 bucket and trigger a background worker queue (e.g. BullMQ), returning a job ID to the client for polling.
 2. **Edge Caching**: Cache public weather GET requests directly on Render's CDN using `Cache-Control` headers to completely bypass serverless execution costs.
 3. **Database-backed sessions**: Swap the anonymous UUID cookie for a proper auth session if user features are introduced.
+
+---
+
+## 24. Author & Contribution
+
+**Developer**: **Mishkatul Islam**
+* **GitHub Profile**: [@MishkatIT](https://github.com/MishkatIT)
+* **LinkedIn Profile**: [Mishkatul Islam](https://linkedin.com/in/mishkatit)
+* **Email**: [mishkatcse1@gmail.com](mailto:mishkatcse1@gmail.com)

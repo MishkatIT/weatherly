@@ -443,14 +443,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Loading ─────────────────────────────────────────────────────────── */}
-      {isWeatherLoading && (
-        <div className="flex flex-col items-center justify-center py-20">
-          <Loader2 className="h-10 w-10 animate-spin text-sky-500" />
-          <span className="text-xs text-slate-500 mt-3 font-semibold">Fetching weather data…</span>
-        </div>
-      )}
-
       {/* ── Error ───────────────────────────────────────────────────────────── */}
       {isWeatherError && (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-red-500/20 bg-red-500/5 py-12 px-6 text-center">
@@ -468,9 +460,65 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Dashboard ───────────────────────────────────────────────────────── */}
-      {weather && selectedCity && (
+      {/* ── Dashboard (Loads asynchronously with skeletons) ────────────────── */}
+      {selectedCity && !isWeatherError && (
         <div className="grid gap-6 lg:grid-cols-3">
+          {(!weather || isWeatherLoading) ? (
+            <>
+              {/* ════ Main weather card Skeleton ═════════════════════════════ */}
+              <div className="lg:col-span-2 relative overflow-hidden rounded-3xl border border-slate-200 bg-white/70 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 sm:p-8 flex flex-col min-h-[380px] justify-between shadow-xl animate-pulse">
+                <div className="space-y-3">
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                  <div className="h-8 w-64 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                  <div className="h-4 w-40 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                </div>
+                <div className="my-6 flex items-baseline gap-3">
+                  <div className="h-20 w-36 bg-slate-200 dark:bg-slate-850 rounded-2xl" />
+                  <div className="h-6 w-24 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-slate-200/60 dark:border-slate-800/40 pt-6">
+                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
+                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
+                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
+                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
+                </div>
+              </div>
+
+              {/* ════ AI Summary Card Skeleton ═══════════════════════════════ */}
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 flex flex-col justify-between min-h-[380px] animate-pulse">
+                <div>
+                  <div className="h-6 w-40 bg-slate-200 dark:bg-slate-850 rounded-lg mb-6" />
+                  <div className="space-y-3">
+                    <div className="h-4 w-full bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                    <div className="h-4 w-11/12 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                    <div className="h-4 w-5/6 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                  </div>
+                </div>
+                <div className="h-4 w-28 bg-slate-200 dark:bg-slate-850 rounded-lg mt-6" />
+              </div>
+
+              {/* ════ Hourly Forecast Skeleton ═══════════════════════════════ */}
+              <div className="lg:col-span-3 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 animate-pulse">
+                <div className="h-6 w-48 bg-slate-200 dark:bg-slate-850 rounded-lg mb-6" />
+                <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                  {Array.from({ length: 8 }).map((_, idx) => (
+                    <div key={idx} className="flex-1 min-w-[85px] max-w-[160px] h-[120px] rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-900/60 animate-pulse" />
+                  ))}
+                </div>
+              </div>
+
+              {/* ════ Daily Forecast Skeleton ════════════════════════════════ */}
+              <div className="lg:col-span-3 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 animate-pulse">
+                <div className="h-6 w-48 bg-slate-200 dark:bg-slate-850 rounded-lg mb-6" />
+                <div className="grid gap-4 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
+                  {Array.from({ length: 8 }).map((_, idx) => (
+                    <div key={idx} className="h-[150px] rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-900/60 animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
 
           {/* ════ Main weather card (2-col) ═══════════════════════════════════ */}
           <div
@@ -826,6 +874,8 @@ export default function Home() {
             />
           </div>
 
+            </>
+          )}
         </div>
       )}
     </div>
