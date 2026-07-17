@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { redis, safeJsonParse } from "@/lib/cache/redis";
-import { getWeather } from "@/lib/weather-ai/service";
+import { getWeather } from "@/lib/weather/service";
 
 const querySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),

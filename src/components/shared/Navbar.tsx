@@ -1,33 +1,40 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { CloudSun, Sun, Moon } from "lucide-react";
 
 export default function Navbar() {
-  const pathname = usePathname();
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
-  const [mounted, setMounted] = useState(false);
+  const theme = useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined") return () => {};
 
-  useEffect(() => {
-    setMounted(true);
-    const savedTheme = localStorage.getItem("weatherly:theme") as "light" | "dark";
-    if (savedTheme) {
-      setTheme(savedTheme);
-      if (savedTheme === "dark") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
+      const handleStorageChange = (event: StorageEvent) => {
+        if (event.key === "weatherly:theme") {
+          onStoreChange();
+        }
+      };
+
+      const observer = new MutationObserver(() => onStoreChange());
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+      window.addEventListener("storage", handleStorageChange);
+
+      return () => {
+        observer.disconnect();
+        window.removeEventListener("storage", handleStorageChange);
+      };
+    },
+    () => {
+      if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+        return "dark";
       }
-    } else {
-      document.documentElement.classList.add("dark");
-    }
-  }, []);
+      return "light";
+    },
+    () => "light"
+  );
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
     localStorage.setItem("weatherly:theme", newTheme);
     if (newTheme === "dark") {
       document.documentElement.classList.add("dark");
@@ -54,21 +61,17 @@ export default function Navbar() {
 
         {/* Right side — theme toggle */}
         <div className="flex items-center gap-4">
-          {mounted ? (
-            <button
-              onClick={toggleTheme}
-              title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-350 dark:hover:bg-slate-900/80 active:scale-95 transition-all shadow-sm cursor-pointer"
-            >
-              {theme === "dark" ? (
-                <Sun className="h-4.5 w-4.5 text-amber-400" />
-              ) : (
-                <Moon className="h-4.5 w-4.5 text-indigo-600" />
-              )}
-            </button>
-          ) : (
-            <div className="w-9 h-9" />
-          )}
+          <button
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-350 dark:hover:bg-slate-900/80 active:scale-95 transition-all shadow-sm cursor-pointer"
+          >
+            {theme === "dark" ? (
+              <Sun className="h-4.5 w-4.5 text-amber-400" />
+            ) : (
+              <Moon className="h-4.5 w-4.5 text-indigo-600" />
+            )}
+          </button>
         </div>
       </div>
     </header>

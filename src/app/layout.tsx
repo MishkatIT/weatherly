@@ -5,6 +5,7 @@ import Providers from "./providers";
 import Navbar from "@/components/shared/Navbar";
 import WeatherChat from "@/components/shared/WeatherChat";
 import Footer from "@/components/shared/Footer";
+import Script from "next/script";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -33,7 +34,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${plusJakartaSans.variable} h-full antialiased dark`} suppressHydrationWarning>
+    <html lang="en" className={`${plusJakartaSans.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <Script id="theme-bootstrap" strategy="beforeInteractive">{`(() => {
+  try {
+    const savedTheme = localStorage.getItem("weatherly:theme");
+    const shouldUseDark = savedTheme ? savedTheme === "dark" : false;
+    document.documentElement.classList.toggle("dark", shouldUseDark);
+  } catch (e) {
+    document.documentElement.classList.remove("dark");
+  }
+})();`}</Script>
+      </head>
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 font-sans selection:bg-sky-500/30 selection:text-sky-200" suppressHydrationWarning>
         <Providers>
           <Navbar />

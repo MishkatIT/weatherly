@@ -1,7 +1,7 @@
 "use client";
 
 import { Leaf, Dumbbell, Sun, ShieldAlert, CheckCircle2, AlertTriangle, HelpCircle } from "lucide-react";
-import { CurrentWeather } from "@/lib/weather-ai/types";
+import { CurrentWeather } from "@/lib/weather/types";
 import { cn } from "@/lib/utils";
 
 interface ActivityAdvisorProps {

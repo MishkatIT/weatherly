@@ -4,7 +4,7 @@ import { checkRateLimit } from "@/lib/rate-limit/limiter";
 import { redis, safeJsonParse } from "@/lib/cache/redis";
 import { cacheKeys } from "@/lib/cache/keys";
 import { singleFlight } from "@/lib/cache/single-flight";
-import { getWeatherGeo } from "@/lib/weather-ai/service";
+import { getWeatherGeo } from "@/lib/weather/service";
 import { handleSafeError } from "@/lib/errors/response";
 import { RateLimitError } from "@/lib/errors/api-error";
 

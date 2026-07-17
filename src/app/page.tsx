@@ -42,7 +42,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { WeatherResponse } from "@/lib/weather-ai/types";
+import { WeatherResponse } from "@/lib/weather/types";
 import { GeocodeResult } from "@/app/api/geocode/route";
 import { cn } from "@/lib/utils";
 import WeatherMap from "@/components/shared/WeatherMap";
@@ -466,53 +466,53 @@ export default function Home() {
           {(!weather || isWeatherLoading) ? (
             <>
               {/* ════ Main weather card Skeleton ═════════════════════════════ */}
-              <div className="lg:col-span-2 relative overflow-hidden rounded-3xl border border-slate-200 bg-white/70 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 sm:p-8 flex flex-col min-h-[380px] justify-between shadow-xl animate-pulse">
+              <div className="lg:col-span-2 relative overflow-hidden rounded-3xl border border-slate-300/70 bg-slate-100/90 p-6 sm:p-8 flex flex-col min-h-[380px] justify-between shadow-xl animate-pulse dark:border-slate-800/50 dark:bg-slate-950/40">
                 <div className="space-y-3">
-                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-850 rounded-lg" />
-                  <div className="h-8 w-64 bg-slate-200 dark:bg-slate-850 rounded-lg" />
-                  <div className="h-4 w-40 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                  <div className="h-4 w-32 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
+                  <div className="h-8 w-64 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
+                  <div className="h-4 w-40 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
                 </div>
                 <div className="my-6 flex items-baseline gap-3">
-                  <div className="h-20 w-36 bg-slate-200 dark:bg-slate-850 rounded-2xl" />
-                  <div className="h-6 w-24 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                  <div className="h-20 w-36 rounded-2xl bg-slate-500/70 dark:bg-slate-800/80" />
+                  <div className="h-6 w-24 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-slate-200/60 dark:border-slate-800/40 pt-6">
-                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
-                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
-                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
-                  <div className="h-14 bg-slate-100 dark:bg-slate-900/50 rounded-xl" />
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-200/70 pt-6 dark:border-slate-800/40 md:grid-cols-4">
+                  <div className="h-14 rounded-xl bg-slate-600/70 dark:bg-slate-900/70" />
+                  <div className="h-14 rounded-xl bg-slate-600/70 dark:bg-slate-900/70" />
+                  <div className="h-14 rounded-xl bg-slate-600/70 dark:bg-slate-900/70" />
+                  <div className="h-14 rounded-xl bg-slate-600/70 dark:bg-slate-900/70" />
                 </div>
               </div>
 
               {/* ════ AI Summary Card Skeleton ═══════════════════════════════ */}
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 flex flex-col justify-between min-h-[380px] animate-pulse">
+              <div className="flex min-h-[380px] flex-col justify-between rounded-3xl border border-slate-300/70 bg-slate-100/90 p-6 shadow-xl animate-pulse dark:border-slate-800/50 dark:bg-slate-950/40 sm:p-8">
                 <div>
-                  <div className="h-6 w-40 bg-slate-200 dark:bg-slate-850 rounded-lg mb-6" />
+                  <div className="mb-6 h-6 w-40 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
                   <div className="space-y-3">
-                    <div className="h-4 w-full bg-slate-200 dark:bg-slate-850 rounded-lg" />
-                    <div className="h-4 w-11/12 bg-slate-200 dark:bg-slate-850 rounded-lg" />
-                    <div className="h-4 w-5/6 bg-slate-200 dark:bg-slate-850 rounded-lg" />
+                    <div className="h-4 w-full rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
+                    <div className="h-4 w-11/12 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
+                    <div className="h-4 w-5/6 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
                   </div>
                 </div>
-                <div className="h-4 w-28 bg-slate-200 dark:bg-slate-850 rounded-lg mt-6" />
+                <div className="mt-6 h-4 w-28 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
               </div>
 
               {/* ════ Hourly Forecast Skeleton ═══════════════════════════════ */}
-              <div className="lg:col-span-3 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 animate-pulse">
-                <div className="h-6 w-48 bg-slate-200 dark:bg-slate-850 rounded-lg mb-6" />
+              <div className="lg:col-span-3 rounded-3xl border border-slate-300/70 bg-slate-100/90 p-6 shadow-xl animate-pulse dark:border-slate-800/50 dark:bg-slate-950/40 sm:p-8">
+                <div className="mb-6 h-6 w-48 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
                 <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
                   {Array.from({ length: 8 }).map((_, idx) => (
-                    <div key={idx} className="flex-1 min-w-[85px] max-w-[160px] h-[120px] rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-900/60 animate-pulse" />
+                    <div key={idx} className="h-[120px] min-w-[85px] max-w-[160px] flex-1 rounded-2xl border border-slate-400/40 bg-slate-600/70 dark:border-slate-800/50 dark:bg-slate-900/70" />
                   ))}
                 </div>
               </div>
 
               {/* ════ Daily Forecast Skeleton ════════════════════════════════ */}
-              <div className="lg:col-span-3 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xl dark:border-slate-800/40 dark:bg-slate-950/20 animate-pulse">
-                <div className="h-6 w-48 bg-slate-200 dark:bg-slate-850 rounded-lg mb-6" />
-                <div className="grid gap-4 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
+              <div className="lg:col-span-3 rounded-3xl border border-slate-300/70 bg-slate-100/90 p-6 shadow-xl animate-pulse dark:border-slate-800/50 dark:bg-slate-950/40 sm:p-8">
+                <div className="mb-6 h-6 w-48 rounded-lg bg-slate-500/70 dark:bg-slate-800/80" />
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
                   {Array.from({ length: 8 }).map((_, idx) => (
-                    <div key={idx} className="h-[150px] rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-900/60 animate-pulse" />
+                    <div key={idx} className="h-[150px] rounded-2xl border border-slate-400/40 bg-slate-600/70 dark:border-slate-800/50 dark:bg-slate-900/70" />
                   ))}
                 </div>
               </div>

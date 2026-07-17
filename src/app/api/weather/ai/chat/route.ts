@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getWeather } from "@/lib/weather-ai/service";
+import { getWeather } from "@/lib/weather/service";
 
 const chatSchema = z.object({
   messages: z.array(

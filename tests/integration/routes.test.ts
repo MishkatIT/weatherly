@@ -1,12 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as getCurrentWeather } from "@/app/api/weather/current/route";
 import { GET as getGeocode } from "@/app/api/geocode/route";
-import { requestWeatherAI } from "@/lib/weather-ai/client";
+import { getWeather } from "@/lib/weather/service";
+import { WeatherResponse } from "@/lib/weather/types";
 
-// Mock the weather-ai client requests
-vi.mock("@/lib/weather-ai/client", () => ({
-  requestWeatherAI: vi.fn(),
+// Mock the weather service layer
+vi.mock("@/lib/weather/service", () => ({
+  getWeather: vi.fn(),
+  getWeatherGeo: vi.fn(),
+  getHourly: vi.fn(),
 }));
 
 // Mock the Redis database client
@@ -17,7 +20,7 @@ vi.mock("@/lib/cache/redis", () => ({
 describe("Current Weather Route Handler Integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.WAI_API_KEY = "wai_test_secret_key";
+    process.env.OPENWEATHER_API_KEY = "openweather_test_secret_key";
   });
 
   it("should return 400 Bad Request if coordinates are missing", async () => {
@@ -37,8 +40,7 @@ describe("Current Weather Route Handler Integration", () => {
   });
 
   it("should return weather details successfully for valid requests", async () => {
-    // Mock successful service response
-    const mockWeatherResult = {
+    const mockWeatherResult: WeatherResponse = {
       current: {
         temp: 28.5,
         feels_like: 31.2,
@@ -60,11 +62,10 @@ describe("Current Weather Route Handler Integration", () => {
           precipitation: 0.2,
         },
       ],
-      ai_summary: "Weather is warm and humid with scattered cloud cover.",
-      is_fallback: false,
+      hourly: [],
     };
-    
-    vi.mocked(requestWeatherAI).mockResolvedValueOnce(mockWeatherResult);
+
+    vi.mocked(getWeather).mockResolvedValueOnce(mockWeatherResult);
 
     const req = new NextRequest("http://localhost:3000/api/weather/current?lat=22.36&lon=91.78&ai=true");
     const res = await getCurrentWeather(req);
@@ -72,17 +73,8 @@ describe("Current Weather Route Handler Integration", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual(mockWeatherResult);
-    
-    // Ensure the client was called with correct parameters
-    expect(requestWeatherAI).toHaveBeenCalledWith("/v1/weather", {
-      params: {
-        lat: 22.36,
-        lon: 91.78,
-        units: "metric",
-        days: 7,
-        ai: true,
-      },
-    });
+
+    expect(getWeather).toHaveBeenCalledWith(22.36, 91.78, "metric");
   });
 });
 
